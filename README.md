@@ -77,6 +77,7 @@ Regarding inter-service communication: those requests which will be directed fro
             "lobbyId": "abc123", 
             "userId": "12345" 
         }
+        ```
         
         **Response**: 
         ```
