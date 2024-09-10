@@ -17,7 +17,7 @@ Distributed system for booking train tickets and tracking their schedule.
 * Booking service handles booking requests (delegated by the lobby service), provides users with the real-time updates via the lobby service and manages train-related data, directly requested by users.
 
 ## Technology Stack and Communication Patterns
-* Lobby Service: **Python websockets** + **MongoDB** + **Redis** (Caching)
+* Lobby Service: **Python(FastAPI) websockets** + **MongoDB** + **Redis** (Caching)
 * Booking Service: **FastAPI** + **PostgreSQL** + **Redis** (Caching)
 * API Gateway: **Nginx** + **Express**
 * User-service communication: **RESTful API**
@@ -162,6 +162,6 @@ Regarding inter-service communication: those requests which will be directed fro
         ```
 
 ## Deployment and Scaling
-* Both of my services will be deployed as **Docker containers** in a common network. The same principle will be applied for **Redis** cache and **Postgres** database, plus the gateway will be an additional **Nginx** container. There will be no need for lobby database containerization, as **Mongodb** is available as a cloud solution.
+* Both of my services will be deployed as **Docker containers** in a common network (they will be managed using `docker compose` approach). The same principle will be applied for **Redis** cache and **Postgres** database, plus the gateway will be an additional **Nginx** container. There will be no need for lobby database containerization, as **Mongodb** is available as a cloud solution.
 * Moreover, in order for the message queue communication to be possible, **RabbitMQ** will also be running in a separate container.
 * In the conditions of deploying the whole solution using locally running containers **horizontal scaling** seems to be the most appropriate. It is much simplier to increase the number of service instances running than to increase the computational resources of the machine which runs the system.
