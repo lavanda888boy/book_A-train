@@ -1,12 +1,12 @@
 from sqlalchemy import Column, Integer, String, Time, ForeignKey, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-from database import Base
+from .database import Base
 
 
 class Train(Base):
     __tablename__ = 'trains'
 
-    id : Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     route = Column(String(100), nullable=False, index=True)
     departure_time = Column(Time, nullable=False)
     arrival_time = Column(Time, nullable=False)
@@ -22,5 +22,5 @@ class Booking(Base):
     __tablename__ = 'bookings'
 
     id = Column(Integer, primary_key=True, index=True)
-    train_id : Mapped[int] = mapped_column(ForeignKey("trains.id")) 
-    user_id = Column(Integer, index=True)
+    train_id : Mapped[int] = mapped_column(ForeignKey("trains.id"), nullable=False) 
+    user_id = Column(Integer, nullable=False, index=True)
