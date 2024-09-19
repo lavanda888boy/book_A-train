@@ -23,4 +23,4 @@ class Booking(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     train_id: Mapped[int] = mapped_column(ForeignKey("trains.id"), nullable=False) 
-    user_id = Column(Integer, nullable=False, index=True)
+    user_credentials = Column(String(100), nullable=False, index=True)

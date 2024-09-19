@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from db.models import Train, Booking
 from schemas import TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto
@@ -7,6 +8,11 @@ from db.database import get_db
 from typing import List
 
 router = APIRouter()
+
+@router.get("/status")
+def status():
+    return JSONResponse(content={"status": "OK", "message": "Service is running"})
+
 
 @router.post("/trains")
 def register_train(train: TrainBaseDto, db: Session = Depends(get_db)):
@@ -84,7 +90,7 @@ def register_booking(booking: BookingBaseDto, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_train)
 
-    db_booking = Booking(train_id=booking.train_id, user_id=booking.user_id)
+    db_booking = Booking(train_id=booking.train_id, user_credentials=booking.user_credentials)
 
     db.add(db_booking)
     db.commit()

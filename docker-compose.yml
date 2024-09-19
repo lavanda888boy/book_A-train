@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine3.20
+    container_name: train_postgres
+    restart: no
+    environment:
+      - POSTGRES_USER=train_user
+      - POSTGRES_PASSWORD=train_password
+      - POSTGRES_DB=TrainBookingServiceDb
+    ports:
+      - '5432:5432'
+    volumes: 
+        - postgres-data:/var/lib/postgresql/data
+
+  mongo:
+    image: mongo:latest
+    container_name: lobby_mongodb
+    ports:
+      - '9876:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lobby_user
+      MONGO_INITDB_ROOT_PASSWORD: lobby_password
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  postgres-data:
+  mongo-data:
