@@ -7,6 +7,7 @@ from db.init_db import get_database
 
 router = APIRouter()
 
+
 @router.get("/status")
 def status():
     return JSONResponse(content={"status": "OK", "message": "Service is running"})
