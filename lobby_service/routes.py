@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from typing import List
 from pymongo.database import Database
@@ -6,7 +6,6 @@ from db.models import Lobby, Booking
 from db.init_db import get_database
 
 router = APIRouter()
-
 
 @router.get("/status")
 def status():
@@ -41,10 +40,45 @@ def get_lobby_by_id(lobby_id: int, db: Database = Depends(get_database)):
 
 
 @router.delete("/lobbies/{lobby_id}")
-def delete_train_by_id(lobby_id: int, db: Database = Depends(get_database)):
+def delete_lobby_by_id(lobby_id: int, db: Database = Depends(get_database)):
     result = db["lobbies"].delete_one({"train_id": lobby_id})
 
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Lobby to delete not found")
 
     return {"message": "Lobby deleted successfully", "lobby_id": lobby_id}
+
+
+active_connections = {}
+
+@router.websocket("/lobbies/ws/{lobby_id}")
+async def websocket_lobby(websocket: WebSocket, lobby_id: int):
+    db: Database = get_database()
+    lobby = db["lobbies"].find_one({"train_id": lobby_id})
+
+    if lobby is None:
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=404, detail="Lobby for this train not found")
+
+    await websocket.accept()
+
+    welcome_message = f"Welcome to the train lobby {lobby_id}!"
+    await websocket.send_text(welcome_message)
+
+    if lobby_id not in active_connections:
+        active_connections[lobby_id] = []
+    active_connections[lobby_id].append(websocket)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+
+            for connection in active_connections[lobby_id]:
+                if connection != websocket:
+                    await connection.send_text(data)
+
+    except WebSocketDisconnect:
+        active_connections[lobby_id].remove(websocket)
+
+        if len(active_connections[lobby_id]) == 0:
+            del active_connections[lobby_id]
