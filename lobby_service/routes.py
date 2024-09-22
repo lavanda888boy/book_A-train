@@ -4,6 +4,10 @@ from typing import List
 from pymongo.database import Database
 from db.models import Lobby, Booking
 from db.init_db import get_database
+from rabbitmq import RabbitMQ, get_rabbitmq
+
+import asyncio
+import threading
 
 router = APIRouter()
 
@@ -52,7 +56,7 @@ def delete_lobby_by_id(lobby_id: int, db: Database = Depends(get_database)):
 active_connections = {}
 
 @router.websocket("/lobbies/ws/{lobby_id}")
-async def websocket_lobby(websocket: WebSocket, lobby_id: int):
+async def websocket_lobby(websocket: WebSocket, lobby_id: int, rabbitmq: RabbitMQ = Depends(get_rabbitmq)):
     db: Database = get_database()
     lobby = db["lobbies"].find_one({"train_id": lobby_id})
 
@@ -68,6 +72,18 @@ async def websocket_lobby(websocket: WebSocket, lobby_id: int):
     if lobby_id not in active_connections:
         active_connections[lobby_id] = []
     active_connections[lobby_id].append(websocket)
+
+    loop = asyncio.get_event_loop()
+
+    async def broadcast_message_to_lobby(message: str):
+        for connection in active_connections[lobby_id]:
+            await connection.send_text(message)
+
+    def rabbitmq_callback(message: str):
+        asyncio.run_coroutine_threadsafe(broadcast_message_to_lobby(message), loop)
+
+    thread = threading.Thread(target=rabbitmq.consume_messages, args=(str(lobby_id), rabbitmq_callback), daemon=True)
+    thread.start()
 
     try:
         while True:
