@@ -97,6 +97,14 @@ def register_booking(booking: BookingBaseDto, db: Session = Depends(get_db),
     if db_train is None:
         raise HTTPException(status_code=404, detail="Train to book ticket for not found")
     
+    existing_booking = db.query(Booking).filter(
+        Booking.train_id == booking.train_id,
+        Booking.user_credentials == booking.user_credentials
+    ).first()
+
+    if existing_booking:
+        raise HTTPException(status_code=400, detail="Booking already exists for this train and user.")
+    
     db_train.available_seats -= 1
     if db_train.available_seats == 0:
         message = f"A booking was registered for {booking.user_credentials}.\nThere are no more seats left.\n"

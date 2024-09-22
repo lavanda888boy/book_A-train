@@ -8,8 +8,11 @@ from rabbitmq import RabbitMQ, get_rabbitmq
 
 import asyncio
 import threading
+import requests
 
 router = APIRouter()
+
+BOOKINGS_SERVICE_URL = "http://localhost:8000/bookings"
 
 @router.get("/status")
 def status():
@@ -98,3 +101,17 @@ async def websocket_lobby(websocket: WebSocket, lobby_id: int, rabbitmq: RabbitM
 
         if len(active_connections[lobby_id]) == 0:
             del active_connections[lobby_id]
+
+
+@router.post("/start-booking")
+def start_booking_registration(booking: Booking):
+    try:
+        response = requests.post(BOOKINGS_SERVICE_URL, json=booking.model_dump())
+        response.raise_for_status()
+
+        return {"message": "Booking registered successfully", "booking_id": response.content}
+    
+    except requests.exceptions.HTTPError:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=str(err))
