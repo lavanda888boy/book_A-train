@@ -1,9 +1,23 @@
 services:
+  nginx_gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - '7070:80'
+    networks:
+      - micro-network
+    depends_on:
+      - train_booking_service
+      - lobby_service
+    volumes:
+      - nginx-data:/etc/nginx
+
   train_booking_service:
     build:
       context: ./train_booking_service
       dockerfile: Dockerfile  
-    container_name: train_booking_service
     restart: on-failure
     environment:
       DATABASE_URL: ${TRAIN_DATABASE_URL}
@@ -24,7 +38,6 @@ services:
     build:
       context: ./lobby_service
       dockerfile: Dockerfile  
-    container_name: lobby_service
     restart: on-failure
     environment:
       DATABASE_URL: ${LOBBY_DATABASE_URL}
@@ -44,7 +57,6 @@ services:
 
   postgres-trains:
     image: postgres:16-alpine3.20
-    container_name: train_postgres
     restart: no
     environment:
       - POSTGRES_USER=${TRAIN_POSTGRES_USER}
@@ -59,7 +71,6 @@ services:
 
   postgres-lobbies:
     image: postgres:16-alpine3.20
-    container_name: lobby_postgres
     restart: no
     environment:
       - POSTGRES_USER=${LOBBY_POSTGRES_USER}
@@ -74,7 +85,6 @@ services:
 
   rabbitmq:
     image: rabbitmq:management
-    container_name: rabbitmq
     restart: no
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
@@ -88,6 +98,7 @@ services:
       - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
+  nginx-data:
   train_booking_service-data:
   lobby_service-data:
   postgres_trains-data:
