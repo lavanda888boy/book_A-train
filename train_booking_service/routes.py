@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from db.models import Train, Booking
-from schemas import TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto, BookingUpdateDto
+from db.schemas import TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto, BookingUpdateDto
 from db.database import get_db
 from rabbitmq import RabbitMQ, get_rabbitmq
 

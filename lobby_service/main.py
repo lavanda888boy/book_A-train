@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from routes import router
 from middleware.timeout_middleware import TimeoutMiddleware
 

@@ -1,43 +1,99 @@
 services:
-  postgres:
+  train_booking_service:
+    build:
+      context: ./train_booking_service
+      dockerfile: Dockerfile  
+    container_name: train_booking_service
+    restart: on-failure
+    environment:
+      DATABASE_URL: ${TRAIN_DATABASE_URL}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+    ports:
+      - '8000:8000'
+    networks:
+      - micro-network
+    depends_on:
+      - postgres-trains
+      - rabbitmq
+    volumes:
+      - train_booking_service-data:/app
+
+  lobby_service:
+    build:
+      context: ./lobby_service
+      dockerfile: Dockerfile  
+    container_name: lobby_service
+    restart: on-failure
+    environment:
+      DATABASE_URL: ${LOBBY_DATABASE_URL}
+      BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+    ports:
+      - '9000:9000'
+    networks:
+      - micro-network
+    depends_on:
+      - postgres-lobbies
+      - rabbitmq
+    volumes:
+      - lobby_service-data:/app
+
+  postgres-trains:
     image: postgres:16-alpine3.20
     container_name: train_postgres
     restart: no
     environment:
-      - POSTGRES_USER=train_user
-      - POSTGRES_PASSWORD=train_password
-      - POSTGRES_DB=TrainBookingServiceDb
+      - POSTGRES_USER=${TRAIN_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${TRAIN_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${TRAIN_POSTGRES_DB}
     ports:
       - '5432:5432'
+    networks:
+      - micro-network
     volumes: 
-        - postgres-data:/var/lib/postgresql/data
+        - postgres_trains-data:/var/lib/postgresql/data
 
-  mongo:
-    image: mongo:latest
-    container_name: lobby_mongodb
+  postgres-lobbies:
+    image: postgres:16-alpine3.20
+    container_name: lobby_postgres
     restart: no
     environment:
-      MONGO_INITDB_ROOT_USERNAME: lobby_user
-      MONGO_INITDB_ROOT_PASSWORD: lobby_password
+      - POSTGRES_USER=${LOBBY_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${LOBBY_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${LOBBY_POSTGRES_DB}
     ports:
-      - '9876:27017'
-    volumes:
-      - mongo-data:/data/db
+      - '5433:5432'
+    networks:
+      - micro-network
+    volumes: 
+        - postgres_lobbies-data:/var/lib/postgresql/data
 
   rabbitmq:
     image: rabbitmq:management
     container_name: rabbitmq
     restart: no
     environment:
-      RABBITMQ_DEFAULT_USER: rabbit_user
-      RABBITMQ_DEFAULT_PASS: rabbit_password
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     ports:
       - '5672:5672'
       - '15672:15672'
+    networks:
+      - micro-network
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
-  postgres-data:
-  mongo-data:
+  train_booking_service-data:
+  lobby_service-data:
+  postgres_trains-data:
+  postgres_lobbies-data:
   rabbitmq-data:
+
+networks:
+  micro-network:
+    driver: bridge
