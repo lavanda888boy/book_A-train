@@ -15,7 +15,7 @@ router = APIRouter()
 
 @router.get("/status")
 def status():
-    return JSONResponse(content={"status": "OK", "message": "Service is running"})
+    return JSONResponse(content={"status": "OK", "message": "Train booking service is running"})
 
 
 @router.post("/trains")
@@ -38,7 +38,8 @@ def get_all_trains(db: Session = Depends(get_db), redis_cache: redis.Redis = Dep
         return json.loads(trains)
     else:
         trains = db.query(Train).all()
-        redis_cache.setex(name="trains", time=300, value=json.dumps([train.dict() for train in trains]))
+        train_dtos = [TrainInfoDto.model_validate(train) for train in trains]
+        redis_cache.setex(name="trains", time=60, value=json.dumps([train.model_dump(mode='json') for train in train_dtos]))
         return trains
 
 
@@ -53,7 +54,7 @@ def get_train_by_id(train_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/trains/{train_id}")
-def update_train(train_id: int, updated_train: TrainUpdateDto, db: Session = Depends(get_db), 
+def update_train_details(train_id: int, updated_train: TrainUpdateDto, db: Session = Depends(get_db), 
                  rabbitmq: RabbitMQ = Depends(get_rabbitmq)):
     db_train = db.query(Train).filter(Train.id == train_id).first()
 
@@ -144,7 +145,8 @@ def get_all_bookings(db: Session = Depends(get_db), redis_cache: redis.Redis = D
         return json.loads(bookings)
     else:
         bookings = db.query(Booking).all()
-        redis_cache.setex(name="bookings", time=300, value=json.dumps([booking.dict() for booking in bookings]))
+        booking_dtos = [BookingInfoDto.model_validate(booking) for booking in bookings]
+        redis_cache.setex(name="bookings", time=60, value=json.dumps([booking.model_dump() for booking in booking_dtos]))
         return bookings
 
 
@@ -159,7 +161,7 @@ def get_booking_by_id(booking_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/bookings/{booking_id}")
-def update_booking(booking_id: int, updated_booking: BookingUpdateDto, db: Session = Depends(get_db)):
+def update_booking_details(booking_id: int, updated_booking: BookingUpdateDto, db: Session = Depends(get_db)):
     db_booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if db_booking is None:

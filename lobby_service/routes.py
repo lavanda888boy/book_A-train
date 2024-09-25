@@ -21,7 +21,7 @@ BOOKINGS_SERVICE_URL = os.getenv("BOOKINGS_SERVICE_URL")
 
 @router.get("/status")
 def status():
-    return JSONResponse(content={"status": "OK", "message": "Service is running"})
+    return JSONResponse(content={"status": "OK", "message": "Lobby service is running"})
 
 
 @router.post("/lobbies")
@@ -48,7 +48,8 @@ def get_all_lobbies(db: Session = Depends(get_db), redis_cache: redis.Redis = De
         return json.loads(lobbies)
     else:
         lobbies = db.query(Lobby).all()
-        redis_cache.setex(name="lobbies", time=300, value=json.dumps([lobby.dict() for lobby in lobbies]))
+        lobby_dtos = [LobbyDto.model_validate(lobby) for lobby in lobbies]
+        redis_cache.setex(name="lobbies", time=60, value=json.dumps([lobby.model_dump() for lobby in lobby_dtos]))
         return lobbies
 
 
