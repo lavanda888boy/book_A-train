@@ -17,7 +17,7 @@ Distributed system for booking train tickets and tracking their schedule.
 * Booking service handles booking requests (delegated by the lobby service), provides users with the real-time updates via the lobby service and manages train-related data, directly requested by users.
 
 ## Technology Stack and Communication Patterns
-* Lobby Service: **Python(FastAPI) websockets** + **Express** + **Redis** (Caching)
+* Lobby Service: **Python(FastAPI) websockets** + **PostgreSQL** + **Redis** (Caching)
 * Booking Service: **FastAPI** + **PostgreSQL** + **Redis** (Caching)
 * API Gateway: **Express**
 * User-service communication: **RESTful API**
