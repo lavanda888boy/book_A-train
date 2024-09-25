@@ -1,7 +1,13 @@
-FROM nginx:latest
+FROM node:18-alpine
 
-RUN rm /etc/nginx/nginx.conf
+WORKDIR /app
 
-COPY nginx.conf /etc/nginx
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
 
 EXPOSE 80
+
+CMD ["node", "gateway.js"]

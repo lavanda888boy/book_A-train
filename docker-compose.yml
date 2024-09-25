@@ -1,18 +1,18 @@
 services:
-  # nginx_gateway:
-  #   build:
-  #     context: ./gateway
-  #     dockerfile: Dockerfile
-  #   restart: on-failure
-  #   ports:
-  #     - '7070:80'
-  #   networks:
-  #     - micro-network
-  #   depends_on:
-  #     - train_booking_service
-  #     - lobby_service
-  #   volumes:
-  #     - nginx-data:/etc/nginx
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - '7070:80'
+    networks:
+      - micro-network
+    depends_on:
+      - train_booking_service
+      - lobby_service
+    volumes:
+      - gateway-data:/app
 
   train_booking_service:
     build:
@@ -33,7 +33,7 @@ services:
     depends_on:
       - postgres_trains
       - redis_cache
-      # - rabbitmq
+      - rabbitmq
     volumes:
       - train_booking_service-data:/app
 
@@ -57,7 +57,7 @@ services:
     depends_on:
       - postgres_lobbies
       - redis_cache
-      # - rabbitmq
+      - rabbitmq
     volumes:
       - lobby_service-data:/app
 
@@ -99,22 +99,22 @@ services:
     volumes:
       - redis_cache-data:/data
 
-  # rabbitmq:
-  #   image: rabbitmq:management
-  #   restart: no
-  #   environment:
-  #     RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-  #     RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
-  #   ports:
-  #     - '5672:5672'
-  #     - '15672:15672'
-  #   networks:
-  #     - micro-network
-  #   volumes:
-  #     - rabbitmq-data:/var/lib/rabbitmq
+  rabbitmq:
+    image: rabbitmq:management
+    restart: no
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    networks:
+      - micro-network
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
-  nginx-data:
+  gateway-data:
   train_booking_service-data:
   lobby_service-data:
   postgres_trains-data:
