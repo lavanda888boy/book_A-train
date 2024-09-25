@@ -5,12 +5,15 @@ from db.models import Lobby
 from db.schemas import LobbyDto, BookingDto
 from db.database import get_db
 from sqlalchemy.orm import Session
-from rabbitmq import RabbitMQ, get_rabbitmq
+from utils.rabbitmq import RabbitMQ, get_rabbitmq
+from utils.redis_cache import get_redis_client
 
 import asyncio
 import threading
 import requests
 import os
+import redis
+import json
 
 router = APIRouter()
 
@@ -38,8 +41,15 @@ def create_lobby(lobby: LobbyDto, db: Session = Depends(get_db)):
 
 
 @router.get("/lobbies", response_model=List[LobbyDto])
-def get_all_lobbies(db: Session = Depends(get_db)):
-    return db.query(Lobby).all()
+def get_all_lobbies(db: Session = Depends(get_db), redis_cache: redis.Redis = Depends(get_redis_client)):
+    lobbies = redis_cache.get("lobbies")
+
+    if lobbies:
+        return json.loads(lobbies)
+    else:
+        lobbies = db.query(Lobby).all()
+        redis_cache.setex(name="lobbies", time=300, value=json.dumps([lobby.dict() for lobby in lobbies]))
+        return lobbies
 
 
 @router.get("/lobbies/{lobby_id}", response_model=LobbyDto)

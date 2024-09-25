@@ -10,7 +10,6 @@ class TimeoutMiddleware:
         self.app = app
         self.timeout_seconds = timeout_seconds
 
-
     async def __call__(self, request: Request, call_next):
         try:
             async with timeout(self.timeout_seconds):

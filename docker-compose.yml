@@ -1,18 +1,18 @@
 services:
-  nginx_gateway:
-    build:
-      context: ./gateway
-      dockerfile: Dockerfile
-    restart: on-failure
-    ports:
-      - '7070:80'
-    networks:
-      - micro-network
-    depends_on:
-      - train_booking_service
-      - lobby_service
-    volumes:
-      - nginx-data:/etc/nginx
+  # nginx_gateway:
+  #   build:
+  #     context: ./gateway
+  #     dockerfile: Dockerfile
+  #   restart: on-failure
+  #   ports:
+  #     - '7070:80'
+  #   networks:
+  #     - micro-network
+  #   depends_on:
+  #     - train_booking_service
+  #     - lobby_service
+  #   volumes:
+  #     - nginx-data:/etc/nginx
 
   train_booking_service:
     build:
@@ -21,6 +21,8 @@ services:
     restart: on-failure
     environment:
       DATABASE_URL: ${TRAIN_DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
       RABBITMQ_HOST: ${RABBITMQ_HOST}
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASS: ${RABBITMQ_PASS}
@@ -29,8 +31,9 @@ services:
     networks:
       - micro-network
     depends_on:
-      - postgres-trains
-      - rabbitmq
+      - postgres_trains
+      - redis_cache
+      # - rabbitmq
     volumes:
       - train_booking_service-data:/app
 
@@ -42,20 +45,23 @@ services:
     environment:
       DATABASE_URL: ${LOBBY_DATABASE_URL}
       BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
       RABBITMQ_HOST: ${RABBITMQ_HOST}
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASS: ${RABBITMQ_PASS}
     ports:
-      - '9000:9000'
+      - '9000:8000'
     networks:
       - micro-network
     depends_on:
-      - postgres-lobbies
-      - rabbitmq
+      - postgres_lobbies
+      - redis_cache
+      # - rabbitmq
     volumes:
       - lobby_service-data:/app
 
-  postgres-trains:
+  postgres_trains:
     image: postgres:16-alpine3.20
     restart: no
     environment:
@@ -69,7 +75,7 @@ services:
     volumes: 
         - postgres_trains-data:/var/lib/postgresql/data
 
-  postgres-lobbies:
+  postgres_lobbies:
     image: postgres:16-alpine3.20
     restart: no
     environment:
@@ -82,20 +88,30 @@ services:
       - micro-network
     volumes: 
         - postgres_lobbies-data:/var/lib/postgresql/data
-
-  rabbitmq:
-    image: rabbitmq:management
+  
+  redis_cache:
+    image: redis:latest
     restart: no
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     ports:
-      - '5672:5672'
-      - '15672:15672'
+      - "${REDIS_PORT}:${REDIS_PORT}"
     networks:
       - micro-network
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
+      - redis_cache-data:/data
+
+  # rabbitmq:
+  #   image: rabbitmq:management
+  #   restart: no
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+  #     RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+  #   ports:
+  #     - '5672:5672'
+  #     - '15672:15672'
+  #   networks:
+  #     - micro-network
+  #   volumes:
+  #     - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
   nginx-data:
@@ -103,6 +119,7 @@ volumes:
   lobby_service-data:
   postgres_trains-data:
   postgres_lobbies-data:
+  redis_cache-data:
   rabbitmq-data:
 
 networks:

@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 from db.models import Train, Booking
 from db.schemas import TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto, BookingUpdateDto
 from db.database import get_db
-from rabbitmq import RabbitMQ, get_rabbitmq
-
+from utils.rabbitmq import RabbitMQ, get_rabbitmq
+from utils.redis_cache import get_redis_client
 from typing import List
+
+import redis
+import json
 
 router = APIRouter()
 
@@ -28,8 +31,15 @@ def register_train(train: TrainBaseDto, db: Session = Depends(get_db)):
 
 
 @router.get("/trains", response_model=List[TrainInfoDto])
-def get_all_trains(db: Session = Depends(get_db)):
-    return db.query(Train).all()
+def get_all_trains(db: Session = Depends(get_db), redis_cache: redis.Redis = Depends(get_redis_client)):
+    trains = redis_cache.get("trains")
+
+    if trains:
+        return json.loads(trains)
+    else:
+        trains = db.query(Train).all()
+        redis_cache.setex(name="trains", time=300, value=json.dumps([train.dict() for train in trains]))
+        return trains
 
 
 @router.get("/trains/{train_id}", response_model=TrainInfoDto)
@@ -127,8 +137,15 @@ def register_booking(booking: BookingBaseDto, db: Session = Depends(get_db),
 
 
 @router.get("/bookings", response_model=List[BookingInfoDto])
-def get_all_bookings(db: Session = Depends(get_db)):
-    return db.query(Booking).all()
+def get_all_bookings(db: Session = Depends(get_db), redis_cache: redis.Redis = Depends(get_redis_client)):
+    bookings = redis_cache.get("bookings")
+
+    if bookings:
+        return json.loads(bookings)
+    else:
+        bookings = db.query(Booking).all()
+        redis_cache.setex(name="bookings", time=300, value=json.dumps([booking.dict() for booking in bookings]))
+        return bookings
 
 
 @router.get("/bookings/{booking_id}", response_model=BookingInfoDto)
