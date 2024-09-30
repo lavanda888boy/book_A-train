@@ -6,14 +6,12 @@ from db.schemas import LobbyDto, BookingDto
 from db.database import get_db
 from sqlalchemy.orm import Session
 from utils.rabbitmq import RabbitMQ, get_rabbitmq
-from utils.redis_cache import get_redis_client
+from management.lobby_manager import LobbyManager, get_lobby_manager
 
 import asyncio
 import threading
 import requests
 import os
-import redis
-import json
 
 router = APIRouter()
 
@@ -25,55 +23,23 @@ def status():
 
 
 @router.post("/lobbies")
-def create_lobby(lobby: LobbyDto, db: Session = Depends(get_db)):
-    existing_lobby =  db.query(Lobby).filter(Lobby.train_id == lobby.train_id).first()
-
-    if existing_lobby:
-        raise HTTPException(status_code=400, detail="Lobby with this train_id already exists")
-
-    db_lobby = Lobby(train_id=lobby.train_id)
-
-    db.add(db_lobby)
-    db.commit()
-    db.refresh(db_lobby)
-
-    return db_lobby.id
+def create_lobby(lobby: LobbyDto, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+    return lobby_manager.create(lobby)
 
 
 @router.get("/lobbies", response_model=List[LobbyDto])
-def get_all_lobbies(db: Session = Depends(get_db), redis_cache: redis.Redis = Depends(get_redis_client)):
-    lobbies = redis_cache.get("lobbies")
-
-    if lobbies:
-        return json.loads(lobbies)
-    else:
-        lobbies = db.query(Lobby).all()
-        lobby_dtos = [LobbyDto.model_validate(lobby) for lobby in lobbies]
-        redis_cache.setex(name="lobbies", time=60, value=json.dumps([lobby.model_dump() for lobby in lobby_dtos]))
-        return lobbies
+def get_all_lobbies(lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+    return lobby_manager.get_all()
 
 
 @router.get("/lobbies/{lobby_id}", response_model=LobbyDto)
-def get_lobby_by_id(lobby_id: int, db: Session = Depends(get_db)):
-    db_lobby = db.query(Lobby).filter(Lobby.id == lobby_id).first()
-
-    if db_lobby is None:
-        raise HTTPException(status_code=404, detail="Lobby not found")
-    
-    return db_lobby
+def get_lobby_by_id(lobby_id: int, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+    return lobby_manager.get_by_id(lobby_id)
 
 
 @router.delete("/lobbies/{lobby_id}")
-def delete_lobby_by_id(lobby_id: int, db: Session = Depends(get_db)):
-    db_lobby = db.query(Lobby).filter(Lobby.id == lobby_id).first()
-
-    if db_lobby is None:
-        raise HTTPException(status_code=404, detail="Lobby to delete not found")
-
-    db.delete(db_lobby)
-    db.commit()
-
-    return db_lobby.id
+def delete_lobby_by_id(lobby_id: int, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+    return lobby_manager.delete(lobby_id)
 
 
 active_connections = {}
