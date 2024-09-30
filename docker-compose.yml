@@ -5,16 +5,17 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     environment:
-      PROXY_TIMEOUT: ${PROXY_TIMEOUT}
-      WINDOW_SIZE: ${WINDOW_SIZE}
-      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS}
+      PROXY_TIMEOUT: 5000
+      WINDOW_SIZE: 1000
+      MAX_CONCURRENT_REQUESTS: 5
+      PORT: 8080
     ports:
       - '7070:8080'
     networks:
       - micro-network
     depends_on:
-      - train_booking_service
-      - lobby_service
+      - service_discovery
+      - redis_discovery
 
   service_discovery:
     build:
@@ -22,8 +23,10 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     environment:
-      REDIS_HOST: ${REDIS_SUPLIMENTARY_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      PORT: 8080
+      GRPC_PORT: 50051
+      REDIS_HOST: redis_discovery
+      REDIS_PORT: 6379
     ports:
       - '6060:8080'
       - '50051:50051'
@@ -36,7 +39,7 @@ services:
     image: redis:latest
     restart: no
     ports:
-      - "${REDIS_SUPLIMENTARY_PORT}:${REDIS_PORT}"
+      - "6380:6380"
     networks:
       - micro-network
     volumes:
@@ -46,19 +49,24 @@ services:
     build:
       context: ./train_booking_service
       dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
+      SERVICE_NAME: train_booking_service
       DATABASE_URL: ${TRAIN_DATABASE_URL}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      REDIS_HOST: redis_cache
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
     ports:
       - '8000:8000'
     networks:
       - micro-network
     depends_on:
+      - gateway
       - postgres_trains
       - redis_cache
       - rabbitmq
@@ -67,20 +75,25 @@ services:
     build:
       context: ./lobby_service
       dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
+      SERVICE_NAME: lobby_service
       DATABASE_URL: ${LOBBY_DATABASE_URL}
       BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      REDIS_HOST: redis_cache
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
     ports:
       - '9000:8000'
     networks:
       - micro-network
     depends_on:
+      - gateway
       - postgres_lobbies
       - redis_cache
       - rabbitmq
@@ -117,7 +130,7 @@ services:
     image: redis:latest
     restart: no
     ports:
-      - "${REDIS_PORT}:${REDIS_PORT}"
+      - "6379:6379"
     networks:
       - micro-network
     volumes:

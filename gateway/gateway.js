@@ -7,8 +7,8 @@ const app = express();
 require('dotenv').config()
 
 const limiter = rateLimit({
-    windowMs: process.env.WINDOW_SIZE,
-    max: process.env.MAX_CONCURRENT_REQUESTS,
+    windowMs: Number(process.env.WINDOW_SIZE),
+    max: Number(process.env.MAX_CONCURRENT_REQUESTS),
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false
@@ -21,7 +21,7 @@ const proxyOptions = {
         proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for'] || req.ip);
         proxyReq.setHeader('X-Forwarded-Proto', req.protocol);
     },
-    proxyTimeout: process.env.PROXY_TIMEOUT
+    proxyTimeout: Number(process.env.PROXY_TIMEOUT)
 };
 
 app.use('/ts', limiter, createProxyMiddleware({
@@ -38,6 +38,6 @@ app.get('/status', (_req, res) => {
     res.status(200).json({ status: 'OK', message: 'Gateway is running' });
 });
 
-app.listen(8080, () => {
+app.listen(Number(process.env.PORT), () => {
     console.log('Gateway server is up and running');
 });

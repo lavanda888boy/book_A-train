@@ -16,23 +16,24 @@ const app = express();
 app.use(express.json());
 
 function registerService(call, callback) {
-    const serviceInfo = call.request;
-    const serviceKey = `${serviceInfo.name}:${serviceInfo.address}:${serviceInfo.port}`;
-    
-    redisClient.setEx(serviceKey, 60, JSON.stringify(serviceInfo), (err, reply) => {
-        if (err) {
-            console.error('Failed to register service:', err);
-            callback(null, { success: false, message: 'Failed to register service' });
-        } else {
+    const serviceInfo = `${call.request.address}:${call.request.port}`;
+    const serviceData = JSON.stringify(serviceInfo);
+    const serviceKey = call.request.name
+
+    redisClient.rPush(serviceKey, serviceData)   
+        .then(() => {
             console.log(`Registered service: ${serviceKey}`);
             callback(null, { success: true, message: 'Service registered successfully' });
-        }
-    });
+        })
+        .catch(err => {
+            console.error('Failed to register service:', err);
+            callback(null, { success: false, message: 'Failed to register service' });
+        });
 }
 
 const grpcServer = new grpc.Server();
 grpcServer.addService(ServiceDiscovery.service, { Register: registerService });
-grpcServer.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), (error, port) => {
+grpcServer.bindAsync(`0.0.0.0:${process.env.GRPC_PORT}`, grpc.ServerCredentials.createInsecure(), (error, port) => {
     if (error) {
         console.error('Failed to bind gRPC server:', error);
         return;
@@ -44,6 +45,6 @@ app.get('/status', (_req, res) => {
     res.status(200).json({ status: 'OK', message: 'Service discovery is running' });
 });
 
-app.listen(3000, () => {
-    console.log('Service Discovery API running on port 3000');
+app.listen(process.env.PORT, () => {
+    console.log(`Service Discovery API running on port ${process.env.PORT}`);
 });
