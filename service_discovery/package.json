@@ -1,5 +1,5 @@
 {
-  "name": "gateway",
+  "name": "service_discovery",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -10,9 +10,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@grpc/grpc-js": "^1.11.3",
+    "@grpc/proto-loader": "^0.7.13",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
-    "express-rate-limit": "^7.4.0",
-    "http-proxy-middleware": "^3.0.2"
+    "redis": "^4.7.0"
   }
 }

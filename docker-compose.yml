@@ -4,15 +4,43 @@ services:
       context: ./gateway
       dockerfile: Dockerfile
     restart: on-failure
+    environment:
+      PROXY_TIMEOUT: ${PROXY_TIMEOUT}
+      WINDOW_SIZE: ${WINDOW_SIZE}
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS}
     ports:
-      - '7070:80'
+      - '7070:8080'
     networks:
       - micro-network
     depends_on:
       - train_booking_service
       - lobby_service
+
+  service_discovery:
+    build:
+      context: ./service_discovery
+      dockerfile: Dockerfile
+    restart: on-failure
+    environment:
+      REDIS_HOST: ${REDIS_SUPLIMENTARY_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    ports:
+      - '6060:8080'
+      - '50051:50051'
+    networks:
+      - micro-network
+    depends_on:
+      - redis_discovery
+
+  redis_discovery:
+    image: redis:latest
+    restart: no
+    ports:
+      - "${REDIS_SUPLIMENTARY_PORT}:${REDIS_PORT}"
+    networks:
+      - micro-network
     volumes:
-      - gateway-data:/app
+      - redis_discovery-data:/data
 
   train_booking_service:
     build:
@@ -34,8 +62,6 @@ services:
       - postgres_trains
       - redis_cache
       - rabbitmq
-    volumes:
-      - train_booking_service-data:/app
 
   lobby_service:
     build:
@@ -58,8 +84,6 @@ services:
       - postgres_lobbies
       - redis_cache
       - rabbitmq
-    volumes:
-      - lobby_service-data:/app
 
   postgres_trains:
     image: postgres:16-alpine3.20
@@ -110,17 +134,12 @@ services:
       - '15672:15672'
     networks:
       - micro-network
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
 
 volumes:
-  gateway-data:
-  train_booking_service-data:
-  lobby_service-data:
+  redis_discovery-data:
   postgres_trains-data:
   postgres_lobbies-data:
   redis_cache-data:
-  rabbitmq-data:
 
 networks:
   micro-network:

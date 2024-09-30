@@ -9,5 +9,6 @@ RUN npm install
 COPY . .
 
 EXPOSE 8080
+EXPOSE 50051
 
-CMD ["node", "gateway.js"]
+CMD ["node", "discovery.js"]
