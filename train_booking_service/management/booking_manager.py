@@ -97,7 +97,7 @@ class BookingManager:
         db_train = self.db.query(Train).filter(Train.id == db_booking.train_id).first()
         db_train.available_seats += 1
         
-        message = f"A booking was registered for {db_booking.user_credentials}.\nAvailable seats: {db_train.available_seats}\n"
+        message = f"A booking was cancelled by {db_booking.user_credentials}.\nAvailable seats: {db_train.available_seats}\n"
         self.rabbitmq.send_message_to_exchange(routing_key=str(db_train.id), message=message)
 
         self.db.delete(db_booking)

@@ -66,8 +66,8 @@ services:
     networks:
       - micro-network
     depends_on:
-      - gateway
       - postgres_trains
+      - gateway
       - redis_cache
       - rabbitmq
 
@@ -93,8 +93,8 @@ services:
     networks:
       - micro-network
     depends_on:
-      - gateway
       - postgres_lobbies
+      - gateway
       - redis_cache
       - rabbitmq
 

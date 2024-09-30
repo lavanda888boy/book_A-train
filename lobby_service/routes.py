@@ -29,6 +29,8 @@ def create_lobby(lobby: LobbyDto, lobby_manager: LobbyManager = Depends(get_lobb
 
 @router.get("/lobbies", response_model=List[LobbyDto])
 def get_all_lobbies(lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+    import time
+    time.sleep(6)
     return lobby_manager.get_all()
 
 
