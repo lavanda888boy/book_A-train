@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from fastapi.responses import JSONResponse
 from typing import List
 from db.models import Lobby
-from db.schemas import LobbyDto, BookingDto
+from db.schemas import LobbyBaseDto, LobbyInfoDto, BookingDto
 from db.database import get_db
 from sqlalchemy.orm import Session
 from utils.rabbitmq import RabbitMQ, get_rabbitmq
@@ -23,18 +23,16 @@ def status():
 
 
 @router.post("/lobbies")
-def create_lobby(lobby: LobbyDto, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
+def create_lobby(lobby: LobbyBaseDto, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
     return lobby_manager.create(lobby)
 
 
-@router.get("/lobbies", response_model=List[LobbyDto])
+@router.get("/lobbies", response_model=List[LobbyInfoDto])
 def get_all_lobbies(lobby_manager: LobbyManager = Depends(get_lobby_manager)):
-    import time
-    time.sleep(6)
     return lobby_manager.get_all()
 
 
-@router.get("/lobbies/{lobby_id}", response_model=LobbyDto)
+@router.get("/lobbies/{lobby_id}", response_model=LobbyInfoDto)
 def get_lobby_by_id(lobby_id: int, lobby_manager: LobbyManager = Depends(get_lobby_manager)):
     return lobby_manager.get_by_id(lobby_id)
 

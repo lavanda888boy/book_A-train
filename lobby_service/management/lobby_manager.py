@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException
 from db.models import Lobby
-from db.schemas import LobbyDto
+from db.schemas import LobbyBaseDto, LobbyInfoDto
 from db.database import get_db
 from sqlalchemy.orm import Session
 from utils.redis_cache import get_redis_client
@@ -16,7 +16,7 @@ class LobbyManager:
         self.redis_cache = redis_cache
 
 
-    def create(self, lobby: LobbyDto):
+    def create(self, lobby: LobbyBaseDto):
         existing_lobby = self.db.query(Lobby).filter(Lobby.train_id == lobby.train_id).first()
 
         if existing_lobby:
@@ -38,7 +38,7 @@ class LobbyManager:
             return json.loads(cached_lobbies)
         else:
             lobbies = self.db.query(Lobby).all()
-            lobby_dtos = [LobbyDto.model_validate(lobby) for lobby in lobbies]
+            lobby_dtos = [LobbyInfoDto.model_validate(lobby) for lobby in lobbies]
             self.redis_cache.setex(name="lobbies", time=60, value=json.dumps([lobby.model_dump() for lobby in lobby_dtos]))
             return lobby_dtos
         

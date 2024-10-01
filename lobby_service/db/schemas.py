@@ -1,8 +1,12 @@
 from pydantic import BaseModel, Field
 
 
-class LobbyDto(BaseModel):
+class LobbyBaseDto(BaseModel):
     train_id: int
+
+
+class LobbyInfoDto(LobbyBaseDto):
+    id: int
 
     class Config:
         from_attributes = True
