@@ -28,6 +28,8 @@ class LobbyManager:
         self.db.commit()
         self.db.refresh(db_lobby)
 
+        self.redis_cache.delete('lobbies')
+
         return db_lobby.id
     
 
@@ -60,6 +62,8 @@ class LobbyManager:
 
         self.db.delete(db_lobby)
         self.db.commit()
+
+        self.redis_cache.delete('lobbies')
 
         return db_lobby.id
 

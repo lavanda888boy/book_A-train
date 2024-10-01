@@ -22,12 +22,14 @@ class TestDeleteLobbyById(unittest.TestCase):
     def test_delete_by_id_returns_deleted_lobby_id(self):
         lobby = Lobby(id=1, train_id=1)
         self.mock_db.query.return_value.filter.return_value.first.return_value = lobby
+        self.mock_redis_cache.delete.return_value = None
 
         result = self.manager.delete(lobby.id)
 
         self.assertEqual(result, 1)
         self.mock_db.query.return_value.filter.return_value.first.assert_called_once()
         self.mock_db.delete.assert_called_once()
+        self.mock_redis_cache.delete.assert_called_once()
 
 
 if __name__ == '__main__':

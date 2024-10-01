@@ -26,12 +26,14 @@ class TestCreateLobby(unittest.TestCase):
         self.mock_db.add.side_effect = lambda l: setattr(l, 'id', 1)
         self.mock_db.commit.return_value = None
         self.mock_db.refresh.return_value = None
+        self.mock_redis_cache.delete.return_value = None
 
         result = self.manager.create(lobby)
 
         self.assertEqual(result, 1)
         self.mock_db.query.return_value.filter.return_value.first.assert_called_once()
         self.mock_db.add.assert_called_once()
+        self.mock_redis_cache.delete.assert_called_once()
 
 
 if __name__ == '__main__':

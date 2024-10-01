@@ -49,6 +49,7 @@ class BookingManager:
 
         message = f"A booking was registered for {booking.user_credentials}.\nAvailable seats: {db_train.available_seats}\n"
         self.rabbitmq.send_message_to_exchange(routing_key=str(db_train.id), message=message)
+        self.redis_cache.delete('bookings')
 
         return db_booking.id
     
@@ -84,6 +85,8 @@ class BookingManager:
 
         self.db.commit()
         self.db.refresh(db_booking)
+
+        self.redis_cache.delete('bookings')
         
         return db_booking.id
     
@@ -102,6 +105,8 @@ class BookingManager:
 
         self.db.delete(db_booking)
         self.db.commit()
+
+        self.redis_cache.delete('bookings')
 
         return db_booking.id  
 

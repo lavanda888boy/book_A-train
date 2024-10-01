@@ -26,6 +26,8 @@ class TrainManager:
         self.db.commit()
         self.db.refresh(db_train)
 
+        self.redis_cache.delete('trains')
+
         return db_train.id
     
 
@@ -74,6 +76,7 @@ class TrainManager:
         self.db.commit()
         self.db.refresh(db_train)
 
+        self.redis_cache.delete('trains')
         self.rabbitmq.send_message_to_exchange(routing_key=str(train_id), message=message)
         
         return db_train.id
@@ -90,6 +93,7 @@ class TrainManager:
 
         message = "Train you were tracking was removed from the schedule. It was registered by mistake.\n"
         self.rabbitmq.send_message_to_exchange(routing_key=str(train_id), message=message)
+        self.redis_cache.delete('trains')
 
         return db_train.id
 
