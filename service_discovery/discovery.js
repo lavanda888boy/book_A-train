@@ -8,11 +8,13 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {});
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
 const ServiceDiscovery = protoDescriptor.service_discovery.ServiceDiscovery;
 
-const redisClient = redis.createClient({ url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}` });
+const redisClient = redis.createClient({ 
+    url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}` 
+});
+
 redisClient.connect();
 
 const app = express();
-
 app.use(express.json());
 
 function registerService(call, callback) {
@@ -20,7 +22,7 @@ function registerService(call, callback) {
     const serviceData = JSON.stringify(serviceInfo);
     const serviceKey = call.request.name
 
-    redisClient.rPush(serviceKey, serviceData)   
+    redisClient.lPush(serviceKey, serviceData)   
         .then(() => {
             console.log(`Registered service: ${serviceKey}`);
             callback(null, { success: true, message: 'Service registered successfully' });
