@@ -5,12 +5,15 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     environment:
-      PROXY_TIMEOUT: 5000
+      PROXY_TIMEOUT: 10000
       WINDOW_SIZE: 1000
       MAX_CONCURRENT_REQUESTS: 5
       PORT: 8080
       REDIS_HOST: redis_discovery
       REDIS_PORT: 6379
+      ERROR_THRESHOLD: 3
+      CRITICAL_LOAD: 2
+      MONITORING_INTERVAL: 5000
     ports:
       - '7070:8080'
     networks:

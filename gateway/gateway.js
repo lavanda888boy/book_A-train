@@ -3,7 +3,8 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const redis = require('redis');
 const rateLimit = require('express-rate-limit');
 
-const Docker = require('dockerode')
+const Docker = require('dockerode');
+const e = require('express');
 const docker = new Docker({
     host: 'host.docker.internal',
     port: 2375
@@ -27,17 +28,18 @@ const limiter = rateLimit({
 
 let currentIndexes = {};
 
-const ERROR_THRESHOLD = 3;
-const TIMEOUT_MULTIPLIER = 3.5;
+const ERROR_THRESHOLD = Number(process.env.ERROR_THRESHOLD);
+const timeout_multiplier = 3.5;
 const taskTimeoutLimit = Number(process.env.PROXY_TIMEOUT);
 
 let requestCount = 0;
-const CRITICAL_LOAD = 2;
-const MONITORING_INTERVAL = 5000;
+const CRITICAL_LOAD = Number(process.env.CRITICAL_LOAD);
+const MONITORING_INTERVAL = Number(process.env.MONITORING_INTERVAL);
 let intervalId;
 
 
 async function handleCircuitBreaker(serviceKey, serviceUrl) {
+    console.log('hi')
     const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
     const timeoutKey = `${serviceKey}:${serviceUrl}:timeout`;
 
@@ -51,7 +53,7 @@ async function handleCircuitBreaker(serviceKey, serviceUrl) {
 
     if (Number(failureCount) >= ERROR_THRESHOLD) {
         await redisClient.set(timeoutKey, '1');
-        await redisClient.expire(timeoutKey, Math.floor(taskTimeoutLimit * TIMEOUT_MULTIPLIER / 1000));
+        await redisClient.expire(timeoutKey, Math.floor(taskTimeoutLimit * timeout_multiplier / 1000));
 
         await redisClient.del(failureCountKey);
 
@@ -134,23 +136,32 @@ async function proxyRequest(serviceKey) {
     try {
         const targetUrl = await getRoundRobinService(serviceKey);
 
-        return createProxyMiddleware({
-            target: targetUrl,
-            changeOrigin: true,
-            selfHandleResponse: false,
-            timeout: Number(process.env.PROXY_TIMEOUT),
-            onProxyReq: (_proxyReq, req) => {
-                console.log(`Proxying request to: ${targetUrl}${req.url}`);
+        const proxyOptions = {
+            proxyTimeout: Number(process.env.PROXY_TIMEOUT),
+            onProxyReq: async (proxyReq, req) => {
+                await handleCircuitBreaker(serviceKey, targetUrl)
+                proxyReq.setHeader('X-Real-IP', req.ip);
+                proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for'] || req.ip);
+                proxyReq.setHeader('X-Forwarded-Proto', req.protocol);
             },
             onError: async (err, _req, _res) => {
                 console.error('Proxy error:', err);
                 await handleCircuitBreaker(serviceKey, targetUrl);
             },
             onProxyRes: async (proxyRes, _req, _res) => {
-                if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 500) {
+                if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 400) {
                     await resetFailureCount(serviceKey, targetUrl);
+                } else {
+                    await handleCircuitBreaker(serviceKey, targetUrl)
                 }
-            },
+            }
+        };
+
+        return createProxyMiddleware({
+            target: targetUrl,
+            changeOrigin: true,
+            selfHandleResponse: false,
+            ...proxyOptions
         });
     } catch (error) {
         throw new Error(error.message);
@@ -159,7 +170,7 @@ async function proxyRequest(serviceKey) {
 
 function monitorLoad() {
     if (requestCount >= CRITICAL_LOAD) {
-        console.warn(`ALERT: Critical load reached: ${requestCount} requests per ${MONITORING_INTERVAL / 1000}!`);
+        console.warn(`ALERT: Critical load reached: ${requestCount} requests per ${MONITORING_INTERVAL / 1000} seconds!`);
     }
     requestCount = 0;
 }
