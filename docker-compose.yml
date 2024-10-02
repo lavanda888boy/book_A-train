@@ -67,8 +67,8 @@ services:
       - '8000'
     networks:
       - micro-network
-    deploy:
-      replicas: 3
+    # deploy:
+    #   replicas: 3
     depends_on:
       - postgres_trains
       - gateway
@@ -96,8 +96,8 @@ services:
       - '8000'
     networks:
       - micro-network
-    deploy:
-      replicas: 3
+    # deploy:
+    #   replicas: 3
     depends_on:
       - postgres_lobbies
       - gateway
