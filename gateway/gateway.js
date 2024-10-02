@@ -31,6 +31,11 @@ const ERROR_THRESHOLD = 3;
 const TIMEOUT_MULTIPLIER = 3.5;
 const taskTimeoutLimit = Number(process.env.PROXY_TIMEOUT);
 
+let requestCount = 0;
+const CRITICAL_LOAD = 2;
+const MONITORING_INTERVAL = 5000;
+let intervalId;
+
 
 async function handleCircuitBreaker(serviceKey, serviceUrl) {
     const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
@@ -129,8 +134,6 @@ async function proxyRequest(serviceKey) {
     try {
         const targetUrl = await getRoundRobinService(serviceKey);
 
-        await handleCircuitBreaker(serviceKey, targetUrl);
-
         return createProxyMiddleware({
             target: targetUrl,
             changeOrigin: true,
@@ -153,6 +156,20 @@ async function proxyRequest(serviceKey) {
         throw new Error(error.message);
     }
 }
+
+function monitorLoad() {
+    if (requestCount >= CRITICAL_LOAD) {
+        console.warn(`ALERT: Critical load reached: ${requestCount} requests per ${MONITORING_INTERVAL / 1000}!`);
+    }
+    requestCount = 0;
+}
+
+intervalId = setInterval(monitorLoad, MONITORING_INTERVAL);
+
+app.use((_req, _res, next) => {
+    requestCount++;
+    next();
+});
 
 app.use('/ts', limiter, async (req, res, next) => {
     try {
