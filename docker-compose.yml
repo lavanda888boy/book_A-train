@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     environment:
-      PROXY_TIMEOUT: 10000
+      PROXY_TIMEOUT: 6000
       WINDOW_SIZE: 1000
       MAX_CONCURRENT_REQUESTS: 5
       PORT: 8080

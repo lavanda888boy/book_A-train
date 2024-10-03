@@ -19,10 +19,9 @@ app.use(express.json());
 
 function registerService(call, callback) {
     const serviceInfo = `${call.request.address}:${call.request.port}`;
-    const serviceData = JSON.stringify(serviceInfo);
     const serviceKey = call.request.name
 
-    redisClient.lPush(serviceKey, serviceData)   
+    redisClient.lPush(serviceKey, serviceInfo)   
         .then(() => {
             console.log(`Registered service: ${serviceKey}`);
             callback(null, { success: true, message: 'Service registered successfully' });

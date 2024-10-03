@@ -1,17 +1,12 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 const redis = require('redis');
 const rateLimit = require('express-rate-limit');
 
-const Docker = require('dockerode');
-const e = require('express');
-const docker = new Docker({
-    host: 'host.docker.internal',
-    port: 2375
-});
-
 const app = express();
 require('dotenv').config();
+
+const httpProxy = require('http-proxy')
+proxy = httpProxy.createProxyServer()
 
 const redisClient = redis.createClient({
     url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
@@ -39,80 +34,24 @@ let intervalId;
 
 
 async function handleCircuitBreaker(serviceKey, serviceUrl) {
-    console.log('hi')
     const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
     const timeoutKey = `${serviceKey}:${serviceUrl}:timeout`;
-
-    const isServiceInTimeout = await redisClient.exists(timeoutKey);
-    if (isServiceInTimeout) {
-        throw new Error(`${serviceKey} ${serviceUrl} is currently unavailable. It was removed by the Circuit Breaker.`);
-    }
 
     await redisClient.incr(failureCountKey);
     const failureCount = await redisClient.get(failureCountKey);
 
-    if (Number(failureCount) >= ERROR_THRESHOLD) {
+    if (Number(failureCount) === 1) {
         await redisClient.set(timeoutKey, '1');
         await redisClient.expire(timeoutKey, Math.floor(taskTimeoutLimit * timeout_multiplier / 1000));
+        return;
+    }
 
+    const isServiceInTimeout = await redisClient.exists(timeoutKey);
+
+    if (isServiceInTimeout && (Number(failureCount) >= ERROR_THRESHOLD)) {
         await redisClient.del(failureCountKey);
-
-        const containerIp = extractContainerIp(serviceUrl);
-
-        try {
-            const containerId = await findContainerByIp(containerIp);
-
-            if (containerId) {
-                const container = docker.getContainer(containerId);
-
-                await container.stop();
-                await container.remove();
-
-                console.log(`Docker container ${containerId} (IP: ${containerIp}) has been stopped and removed.`);
-            } else {
-                console.error(`No container found with IP address: ${containerIp}`);
-            }
-        } catch (err) {
-            console.error(`Failed to stop/remove Docker container for IP ${containerIp}:`, err);
-        }
-
-        await redisClient.lRem(serviceKey, 0, serviceUrl);
-
-        throw new Error(`${serviceKey} ${serviceUrl} has been removed temporarily due to repeated failures.`);
+        await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
     }
-}
-
-function extractContainerIp(serviceUrl) {
-    const urlParts = serviceUrl.split('//')[1];
-    const containerIp = urlParts.split(':')[0];
-    return containerIp;
-}
-
-async function findContainerByIp(containerIp) {
-    try {
-        const containers = await docker.listContainers({ all: true });
-
-        for (const container of containers) {
-            const containerDetails = await docker.getContainer(container.Id).inspect();
-            const networks = containerDetails.NetworkSettings.Networks;
-
-            for (const networkName in networks) {
-                if (networks[networkName].IPAddress === containerIp) {
-                    return container.Id;
-                }
-            }
-        }
-    } catch (err) {
-        console.error('Error finding container by IP:', err);
-        return null;
-    }
-
-    return null;
-}
-
-async function resetFailureCount(serviceKey, serviceUrl) {
-    const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
-    await redisClient.del(failureCountKey);
 }
 
 async function getRoundRobinService(serviceKey) {
@@ -126,7 +65,7 @@ async function getRoundRobinService(serviceKey) {
         currentIndexes[serviceKey] = 0;
     }
 
-    const serviceUrl = `http://${services[currentIndexes[serviceKey]].replace(/"/g, '')}`;
+    const serviceUrl = `http://${services[currentIndexes[serviceKey]]}`;
     currentIndexes[serviceKey] = (currentIndexes[serviceKey] + 1) % services.length;
 
     return serviceUrl;
@@ -136,33 +75,24 @@ async function proxyRequest(serviceKey) {
     try {
         const targetUrl = await getRoundRobinService(serviceKey);
 
-        const proxyOptions = {
-            proxyTimeout: Number(process.env.PROXY_TIMEOUT),
-            onProxyReq: async (proxyReq, req) => {
-                await handleCircuitBreaker(serviceKey, targetUrl)
-                proxyReq.setHeader('X-Real-IP', req.ip);
-                proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for'] || req.ip);
-                proxyReq.setHeader('X-Forwarded-Proto', req.protocol);
-            },
-            onError: async (err, _req, _res) => {
-                console.error('Proxy error:', err);
-                await handleCircuitBreaker(serviceKey, targetUrl);
-            },
-            onProxyRes: async (proxyRes, _req, _res) => {
-                if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 400) {
-                    await resetFailureCount(serviceKey, targetUrl);
-                } else {
-                    await handleCircuitBreaker(serviceKey, targetUrl)
-                }
-            }
-        };
+        return (req, res, _next) => {
+            req.headers['X-Real-IP'] = req.ip;
+            req.headers['X-Forwarded-For'] = req.headers['x-forwarded-for'] || req.ip;
+            req.headers['X-Forwarded-Proto'] = req.protocol;
 
-        return createProxyMiddleware({
-            target: targetUrl,
-            changeOrigin: true,
-            selfHandleResponse: false,
-            ...proxyOptions
-        });
+            proxy.web(req, res, { target: targetUrl, timeout: Number(process.env.PROXY_TIMEOUT) }, async (err) => {
+                console.error('Proxy error:', err);
+                res.status(502).json({ detail: 'Bad Gateway' });
+            });
+
+            proxy.on('proxyRes', async (proxyRes) => {
+                if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 400) {
+                    console.log(`Succesful response from ${serviceKey}`)
+                } else {
+                    await handleCircuitBreaker(serviceKey, targetUrl);
+                }
+            });
+        };
     } catch (error) {
         throw new Error(error.message);
     }
