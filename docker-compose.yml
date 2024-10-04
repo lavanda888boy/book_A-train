@@ -14,6 +14,7 @@ services:
       ERROR_THRESHOLD: 3
       CRITICAL_LOAD: 2
       MONITORING_INTERVAL: 5000
+      LOAD_BALANCER_TYPE: 1 
     ports:
       - '7070:8080'
     networks:
@@ -70,8 +71,8 @@ services:
       - '8000'
     networks:
       - micro-network
-    # deploy:
-    #   replicas: 3
+    deploy:
+      replicas: 3
     depends_on:
       - postgres_trains
       - gateway
@@ -99,8 +100,8 @@ services:
       - '8000'
     networks:
       - micro-network
-    # deploy:
-    #   replicas: 3
+    deploy:
+      replicas: 3
     depends_on:
       - postgres_lobbies
       - gateway
