@@ -39,6 +39,11 @@ async function handleCircuitBreaker(serviceKey, serviceUrl) {
     const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
     const timeoutKey = `${serviceKey}:${serviceUrl}:timeout`;
 
+    const failureCountExists = await redisClient.exists(failureCountKey);
+    if (!failureCountExists) {
+        await redisClient.set(failureCountKey, '0');
+    }
+
     await redisClient.incr(failureCountKey);
     const failureCount = await redisClient.get(failureCountKey);
 
@@ -54,6 +59,8 @@ async function handleCircuitBreaker(serviceKey, serviceUrl) {
         await redisClient.del(failureCountKey);
         await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
         console.log(`${serviceKey} ${serviceUrl} is no more available due to consecutive errors`)
+    } else if (!isServiceInTimeout) {
+        await redisClient.set(failureCountKey, '0');
     }
 }
 
@@ -145,11 +152,11 @@ async function proxyRequestWithLeastConnections(serviceKey) {
             proxy.on('proxyRes', async (proxyRes) => {
                 res.on('finish', async () => {
                     await redisClient.decr(connectionCountKey);
-                });
 
-                if (!(proxyRes.statusCode >= 200 && proxyRes.statusCode < 400)) {
-                    await handleCircuitBreaker(serviceKey, targetUrl);
-                }
+                    if (proxyRes.statusCode >= 400) {
+                        await handleCircuitBreaker(serviceKey, targetUrl);
+                    }
+                });
             });
         };
     } catch (error) {
