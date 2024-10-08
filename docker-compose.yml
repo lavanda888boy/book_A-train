@@ -79,7 +79,7 @@ services:
       - redis_cache
       - rabbitmq
 
-  lobby_service:
+  lobby_service_1:
     build:
       context: ./lobby_service
       dockerfile: Dockerfile  
@@ -97,11 +97,63 @@ services:
       SD_HOST: service_discovery
       SD_PORT: 50051
     ports:
-      - '8000'
+      - '9000:8000'
     networks:
       - micro-network
-    deploy:
-      replicas: 3
+    depends_on:
+      - postgres_lobbies
+      - gateway
+      - redis_cache
+      - rabbitmq
+
+  lobby_service_2:
+    build:
+      context: ./lobby_service
+      dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure
+    environment:
+      SERVICE_NAME: lobby_service
+      DATABASE_URL: ${LOBBY_DATABASE_URL}
+      BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
+      REDIS_HOST: redis_cache
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
+    ports:
+      - '9001:8000'
+    networks:
+      - micro-network
+    depends_on:
+      - postgres_lobbies
+      - gateway
+      - redis_cache
+      - rabbitmq
+
+  lobby_service_3:
+    build:
+      context: ./lobby_service
+      dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure
+    environment:
+      SERVICE_NAME: lobby_service
+      DATABASE_URL: ${LOBBY_DATABASE_URL}
+      BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
+      REDIS_HOST: redis_cache
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
+    ports:
+      - '9002:8000'
+    networks:
+      - micro-network
     depends_on:
       - postgres_lobbies
       - gateway

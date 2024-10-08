@@ -174,22 +174,27 @@ async function getProxyMiddleware(serviceKey) {
     }
 }
 
+let requestCounts = {
+    train_booking_service: 0,
+    lobby_service: 0,
+};
+
 function monitorLoad() {
-    if (requestCount >= CRITICAL_LOAD) {
-        console.warn(`ALERT: Critical load reached: ${requestCount} requests per ${MONITORING_INTERVAL / 1000} seconds!`);
-    }
-    requestCount = 0;
+    Object.keys(requestCounts).forEach(serviceKey => {
+        if (requestCounts[serviceKey] >= CRITICAL_LOAD) {
+            console.warn(`ALERT: Critical load reached for ${serviceKey}: ${requestCounts[serviceKey]} requests per ${MONITORING_INTERVAL / 1000} seconds!`);
+        }
+
+        requestCounts[serviceKey] = 0;
+    });
 }
 
 intervalId = setInterval(monitorLoad, MONITORING_INTERVAL);
 
-app.use((_req, _res, next) => {
-    requestCount++;
-    next();
-});
-
 app.use('/ts', limiter, async (req, res, next) => {
     try {
+        requestCounts['train_booking_service']++;
+
         const proxyMiddleware = await getProxyMiddleware('train_booking_service');
         proxyMiddleware(req, res, next);
     } catch (error) {
@@ -199,6 +204,8 @@ app.use('/ts', limiter, async (req, res, next) => {
 
 app.use('/ls', limiter, async (req, res, next) => {
     try {
+        requestCounts['lobby_service']++;
+
         const proxyMiddleware = await getProxyMiddleware('lobby_service');
         proxyMiddleware(req, res, next);
     } catch (error) {
