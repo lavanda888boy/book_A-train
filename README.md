@@ -1,6 +1,44 @@
 # Train Booking System (microservice-based)
 Distributed system for booking train tickets and tracking their schedule.
 
+## Setup and Execution
+Before running `docker compose` command you will need to create a `.env` file in the root of project directory. The file should look like this (replace the placeholders with your actual connection credentials):
+
+```
+TRAIN_DATABASE_URL=postgresql://your_username:your_password@postgres_trains:5432/your_db
+LOBBY_DATABASE_URL=postgresql://your_username:your_password@postgres_lobbies:5432/your_db
+
+TRAIN_POSTGRES_USER=your_username
+TRAIN_POSTGRES_PASSWORD=your_password
+TRAIN_POSTGRES_DB=your_db
+
+LOBBY_POSTGRES_USER=your_username
+LOBBY_POSTGRES_PASSWORD=your_password
+LOBBY_POSTGRES_DB=your_db
+
+RABBITMQ_USER=your_username
+RABBITMQ_PASS=your_password
+```
+
+After that run the following command in the terminal:
+
+```
+docker compose up --build
+```
+
+The containers will be created and the corresponding volumes will be generated and mounted by Docker. If you want to terminate the system execution run (you may use `-v` option to remove the volumes generated initially):
+
+```
+docker compose down
+```
+
+It is important to mention that in order for the system to behave correctly you should follow these simple rules of sending requests to certain endpoints (their documentation can be found further in this file and in the jsons from the postman folder):
+
+1. The lobby can be created only if the train with the corresponding id exists;
+2. In order to connect to a lobby via websockets that lobby should be created first;
+
+By following these two rules you will be able to enjoy exploring the world of microservices using my application.
+
 ## Application Suitability
 * **Microservice architecture** is a design approach where a software application is divided into small, independent services that communicate with each other over a network. Each service focuses on a specific functionality and can be developed, deployed, and scaled independently. 
 * Regarding the suitability of this architecture for the train booking system:
@@ -29,7 +67,7 @@ Regarding inter-service communication: those requests which will be directed fro
 As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** will be using MongoDB cloud solution and **Booking Service** will rely on the local Postgres database.
 * **Lobby Service Endpoints**:
 
-    * `GET /status`
+    * `GET /status` (simple status endpoint - healthcheck)
 
         **Response**:
         ```
@@ -39,7 +77,7 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `POST /lobbies`
+    * `POST /lobbies` (create lobby associated with an existing train)
 
         **Request**: 
         ```
@@ -53,7 +91,7 @@ As it was mentioned earlier each of the two services will have its own database 
         1
         ```
     
-    * `GET /lobbies`
+    * `GET /lobbies` (get the list of all available lobbies)
 
         **Response**: 
         ```
@@ -65,7 +103,7 @@ As it was mentioned earlier each of the two services will have its own database 
         ]
         ```
     
-    * `GET /lobbies/{lobby_id}`
+    * `GET /lobbies/{lobby_id}` (get information about an existing lobby)
 
         **Response**: 
         ```
@@ -75,14 +113,14 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `DELETE /lobbies/{lobbyId}`
+    * `DELETE /lobbies/{lobbyId}` (delete existing lobby by its id)
 
         **Response**: 
         ```
         1
         ```
 
-    * `POST /start-booking`
+    * `POST /start-booking` (initiate booking process - triggers `POST /bookings` endpoint of the train booking service)
     
         **Request**: 
         ```
@@ -100,11 +138,11 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `ws://{lobby_service_address}/lobbies/ws/{lobby_id}`
+    * `ws://{lobby_service_address}/lobbies/ws/{lobby_id}` (connect to an existing lobby via websockets, `lobby_service_address` is actually `lobby_service_container_name:port`)
 
 * **Train Booking Service Endpoints**:
 
-    * `GET /status`
+    * `GET /status` (simple status endpoint - healthcheck)
 
         **Response**:
         ```
@@ -114,7 +152,7 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `POST /trains`
+    * `POST /trains` (register new train)
 
         **Request**: 
         ```
@@ -131,7 +169,7 @@ As it was mentioned earlier each of the two services will have its own database 
         1
         ```
 
-    * `GET /trains`
+    * `GET /trains` (get the list of registered trains)
 
         **Response**:
         ```
@@ -146,7 +184,7 @@ As it was mentioned earlier each of the two services will have its own database 
         ]
         ```
 
-    * `GET /trains/{trainId}`
+    * `GET /trains/{trainId}` (get information about a train)
 
         **Response**:
         ```
@@ -159,7 +197,7 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `PUT /trains/{train_id}`
+    * `PUT /trains/{train_id}` (update train details by id - supports partial update)
 
         **Request**: 
         ```
@@ -174,14 +212,14 @@ As it was mentioned earlier each of the two services will have its own database 
         1
         ```
 
-    * `DELETE /trains/{train_id}`
+    * `DELETE /trains/{train_id}` (delete registered train)
 
         **Response**: 
         ```
         1
         ```
     
-    * `POST /bookings`
+    * `POST /bookings` (register new booking - triggered by the `POST /start-booking` endpoint of the lobby service)
 
         **Request**: 
         ```
@@ -196,7 +234,7 @@ As it was mentioned earlier each of the two services will have its own database 
         1
         ```
 
-    * `GET /bookings`
+    * `GET /bookings` (get the list of registered bookings)
 
         **Response**:
         ```
@@ -209,7 +247,7 @@ As it was mentioned earlier each of the two services will have its own database 
         ]
         ```
 
-    * `GET /bookings/{booking_id}`
+    * `GET /bookings/{booking_id}` (get information about a booking)
 
         **Response**:
         ```
@@ -220,7 +258,7 @@ As it was mentioned earlier each of the two services will have its own database 
         }
         ```
 
-    * `PUT /bookings/{booking_id}`
+    * `PUT /bookings/{booking_id}` (update information about the user who made the booking)
 
         **Request**: 
         ```
@@ -234,7 +272,7 @@ As it was mentioned earlier each of the two services will have its own database 
         1
         ```
 
-    * `DELETE /bookings/{booking_id}`
+    * `DELETE /bookings/{booking_id}` (delete registered booking)
 
         **Response**: 
         ```

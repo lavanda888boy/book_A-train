@@ -1,0 +1,33 @@
+{
+	"id": "55fcb991-cadc-4518-8877-fb3e4997504a",
+	"name": "Microservice environment",
+	"values": [
+		{
+			"key": "gateway_address_trains",
+			"value": "http://localhost:7070/ts",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "gateway_address_lobbies",
+			"value": "http://localhost:7070/ls",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "gateway_address",
+			"value": "http://localhost:7070",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "service_discovery_address",
+			"value": "http://localhost:8080",
+			"type": "default",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2024-10-24T15:37:21.169Z",
+	"_postman_exported_using": "Postman/11.15.0"
+}

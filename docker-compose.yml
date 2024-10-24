@@ -88,7 +88,7 @@ services:
     environment:
       SERVICE_NAME: lobby_service
       DATABASE_URL: ${LOBBY_DATABASE_URL}
-      BOOKINGS_SERVICE_URL: ${BOOKINGS_SERVICE_URL}
+      BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
       REDIS_HOST: redis_cache
       REDIS_PORT: 6379
       RABBITMQ_HOST: rabbitmq
