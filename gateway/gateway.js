@@ -153,7 +153,7 @@ async function proxyRequestWithLeastConnections(serviceKey) {
                 res.on('finish', async () => {
                     await redisClient.decr(connectionCountKey);
 
-                    if (proxyRes.statusCode >= 400) {
+                    if (proxyRes.statusCode >= 408) {
                         await handleCircuitBreaker(serviceKey, targetUrl);
                     }
                 });

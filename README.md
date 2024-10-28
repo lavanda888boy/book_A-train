@@ -2,7 +2,7 @@
 Distributed system for booking train tickets and tracking their schedule.
 
 ## Setup and Execution
-Before running `docker compose` command you will need to create a `.env` file in the root of project directory. The file should look like this (replace the placeholders with your actual connection credentials):
+Before running `docker compose` command you will need to create a `.env` file in the project root directory. The file should look like this (replace the placeholders with your actual connection credentials):
 
 ```
 TRAIN_DATABASE_URL=postgresql://your_username:your_password@postgres_trains:5432/your_db
@@ -64,7 +64,24 @@ By following these two rules you will be able to enjoy exploring the world of mi
 Regarding inter-service communication: those requests which will be directed from the lobby service to the booking service will be performed via **HTTP** (ticket booking request). On the other hand, real-time notification processing (booking confirmation) will be executed via an asynchronous message queue (**RabbitMQ**). **ServiceDiscovery**, on the other hand, is going to receive **gRPC** requests from the services in order to register them.
 
 ## Data Management Design
-As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** will be using MongoDB cloud solution and **Booking Service** will rely on the local Postgres database.
+As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** and **Booking Service** will rely on the local Postgres databases. 
+
+However, another important detail is that service endpoints can only be accessed via gateway routes by appending them at the end of each request.
+* **Gateway Endpoints**
+
+    * `GET /status` (simple status endpoint - healthcheck)
+
+        **Response**:
+        ```
+        {
+            "status": "OK", 
+            "message": "Gateway is running"
+        }
+        ```
+
+    * `http://localhost:8080/ls` for accessing lobby service
+    * `http://localhost:8080/ts` for accessing train booking service
+
 * **Lobby Service Endpoints**:
 
     * `GET /status` (simple status endpoint - healthcheck)
