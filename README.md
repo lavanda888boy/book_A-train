@@ -55,13 +55,16 @@ By following these two rules you will be able to enjoy exploring the world of mi
 * Booking service handles booking requests (delegated by the lobby service), provides users with the real-time updates via the lobby service and manages train-related data, directly requested by users.
 
 ## Technology Stack and Communication Patterns
-* Lobby Service: **FastAPI + websockets** + **PostgreSQL** + **Redis** (Caching)
-* Booking Service: **FastAPI** + **PostgreSQL** + **Redis** (Caching)
+* Lobby Service: **FastAPI + websockets** + **PostgreSQL**
+* Booking Service: **FastAPI** + **PostgreSQL** (replicated with failover)
+* Caching: **Redis Cluster** (sharded cache)
 * API Gateway + Service Discovery: **Express**
 * User-service communication: **RESTful API**
 * Inter-service communication: **HTTP** + **RabbitMQ**
 
 Regarding inter-service communication: those requests which will be directed from the lobby service to the booking service will be performed via **HTTP** (ticket booking request). On the other hand, real-time notification processing (booking confirmation) will be executed via an asynchronous message queue (**RabbitMQ**). **ServiceDiscovery**, on the other hand, is going to receive **gRPC** requests from the services in order to register them.
+
+In addition to that it is essential to clarify the use of **Data Warehouse** and **ELK Stack** components. The first one will be collecting data from the microservice databases periodically using ETL pipelines; the second one will be used for log aggregation: **LogStash** for collecting logs, **ElasticSearch** for accessing the logs and searching them efficiently and **Kibana** for visualisation purposes.
 
 ## Data Management Design
 As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** and **Booking Service** will rely on the local Postgres databases. 
