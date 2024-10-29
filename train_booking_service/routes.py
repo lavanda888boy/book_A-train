@@ -7,6 +7,7 @@ from typing import List
 
 router = APIRouter()
 
+
 @router.get("/status")
 def status():
     return JSONResponse(content={"status": "OK", "message": "Train booking service is running"})
@@ -19,6 +20,8 @@ def register_train(train: TrainBaseDto, train_manager: TrainManager = Depends(ge
 
 @router.get("/trains", response_model=List[TrainInfoDto])
 def get_all_trains(train_manager: TrainManager = Depends(get_train_manager)):
+    import time
+    time.sleep(5)
     return train_manager.get_all()
 
 
@@ -53,11 +56,11 @@ def get_booking_by_id(booking_id: int, booking_manager: BookingManager = Depends
 
 
 @router.put("/bookings/{booking_id}")
-def update_booking_details(booking_id: int, updated_booking: BookingUpdateDto, 
+def update_booking_details(booking_id: int, updated_booking: BookingUpdateDto,
                            booking_manager: BookingManager = Depends(get_booking_manager)):
     return booking_manager.update(booking_id, updated_booking)
 
 
 @router.delete("/bookings/{booking_id}")
 def delete_booking_by_id(booking_id: int, booking_manager: BookingManager = Depends(get_booking_manager)):
-    return booking_manager.delete(booking_id)  
+    return booking_manager.delete(booking_id)

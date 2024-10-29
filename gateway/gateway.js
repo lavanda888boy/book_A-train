@@ -2,6 +2,8 @@ const express = require('express');
 const redis = require('redis');
 const rateLimit = require('express-rate-limit');
 
+const axios = require('axios');
+
 const app = express();
 require('dotenv').config();
 
@@ -23,45 +25,51 @@ const limiter = rateLimit({
 
 let currentIndexes = {};
 
-const ERROR_THRESHOLD = Number(process.env.ERROR_THRESHOLD);
-const timeout_multiplier = 3.5;
-const taskTimeoutLimit = Number(process.env.PROXY_TIMEOUT);
-
-let requestCount = 0;
 const CRITICAL_LOAD = Number(process.env.CRITICAL_LOAD);
 const MONITORING_INTERVAL = Number(process.env.MONITORING_INTERVAL);
-let intervalId;
-
-const LOAD_BALANCER_TYPE = Number(process.env.LOAD_BALANCER_TYPE)
+const LOAD_BALANCER_TYPE = Number(process.env.LOAD_BALANCER_TYPE);
 
 
-async function handleCircuitBreaker(serviceKey, serviceUrl) {
-    const failureCountKey = `${serviceKey}:${serviceUrl}:failures`;
-    const timeoutKey = `${serviceKey}:${serviceUrl}:timeout`;
+async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
+    let consecutiveFailures = 0;
+    const maxRetries = 3;
 
-    const failureCountExists = await redisClient.exists(failureCountKey);
-    if (!failureCountExists) {
-        await redisClient.set(failureCountKey, '0');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await makeRequestToService(serviceUrl, req);
+            console.log(`Attempt ${attempt} successful:`, response.data);
+
+            consecutiveFailures = 0;
+            return { status: response.status, data: response.data };
+        } catch (error) {
+            if (error.status === 408 || error.status >= 500) {
+                consecutiveFailures++;
+                console.log(`Attempt ${attempt} failed with status ${error.status}:`, error.message);
+            } else {
+                return { status: error.status, data: error.data };
+            }
+        }
     }
 
-    await redisClient.incr(failureCountKey);
-    const failureCount = await redisClient.get(failureCountKey);
-
-    if (Number(failureCount) === 1) {
-        await redisClient.set(timeoutKey, '1');
-        await redisClient.expire(timeoutKey, Math.floor(taskTimeoutLimit * timeout_multiplier / 1000));
-        return;
-    }
-
-    const isServiceInTimeout = await redisClient.exists(timeoutKey);
-
-    if (isServiceInTimeout && (Number(failureCount) >= ERROR_THRESHOLD)) {
-        await redisClient.del(failureCountKey);
+    if (consecutiveFailures === maxRetries) {
         await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
-        console.log(`${serviceKey} ${serviceUrl} is no more available due to consecutive errors`)
-    } else if (!isServiceInTimeout) {
-        await redisClient.set(failureCountKey, '0');
+        console.log(`${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`);
+        return { status: 503, data: { detail: 'Service Unavailable' } };
     }
+}
+
+async function makeRequestToService(serviceUrl, req) {
+    const url = `${serviceUrl}${req.path}`;
+
+    const options = {
+        method: req.method,
+        url: url,
+        headers: req.headers,
+        data: req.rawBody,
+    };
+
+    const response = await axios(options);
+    return response;
 }
 
 async function getRoundRobinService(serviceKey) {
@@ -108,23 +116,23 @@ async function proxyRoundRobinRequest(serviceKey) {
     try {
         const targetUrl = await getRoundRobinService(serviceKey);
 
-        return (req, res, _next) => {
+        return async (req, res, _next) => {
             req.headers['X-Real-IP'] = req.ip;
             req.headers['X-Forwarded-For'] = req.headers['x-forwarded-for'] || req.ip;
             req.headers['X-Forwarded-Proto'] = req.protocol;
+
+            const circuitBreakerResponse = await handleCircuitBreaker(serviceKey, targetUrl, req);
+
+            if (circuitBreakerResponse.status === 503) {
+                return res.status(503).json(circuitBreakerResponse.data);
+            }
 
             proxy.web(req, res, { target: targetUrl, timeout: Number(process.env.PROXY_TIMEOUT) }, async (err) => {
                 console.error('Proxy error:', err);
                 res.status(502).json({ detail: 'Bad Gateway' });
             });
 
-            proxy.on('proxyRes', async (proxyRes) => {
-                if (proxyRes.statusCode >= 200 && proxyRes.statusCode < 400) {
-                    console.log(`Succesful response from ${serviceKey}`)
-                } else {
-                    await handleCircuitBreaker(serviceKey, targetUrl);
-                }
-            });
+            return res.status(circuitBreakerResponse.status).json(circuitBreakerResponse.data);
         };
     } catch (error) {
         throw new Error(error.message);
@@ -138,10 +146,17 @@ async function proxyRequestWithLeastConnections(serviceKey) {
 
         await redisClient.incr(connectionCountKey);
 
-        return (req, res, _next) => {
+        return async (req, res, _next) => {
             req.headers['X-Real-IP'] = req.ip;
             req.headers['X-Forwarded-For'] = req.headers['x-forwarded-for'] || req.ip;
             req.headers['X-Forwarded-Proto'] = req.protocol;
+
+            const circuitBreakerResponse = await handleCircuitBreaker(serviceKey, targetUrl, req);
+
+            if (circuitBreakerResponse.status === 503) {
+                await redisClient.decr(connectionCountKey);
+                return res.status(503).json(circuitBreakerResponse.data);
+            }
 
             proxy.web(req, res, { target: targetUrl, timeout: Number(process.env.PROXY_TIMEOUT) }, async (err) => {
                 console.error('Proxy error:', err);
@@ -149,15 +164,8 @@ async function proxyRequestWithLeastConnections(serviceKey) {
                 await redisClient.decr(connectionCountKey);
             });
 
-            proxy.on('proxyRes', async (proxyRes) => {
-                res.on('finish', async () => {
-                    await redisClient.decr(connectionCountKey);
-
-                    if (proxyRes.statusCode >= 408) {
-                        await handleCircuitBreaker(serviceKey, targetUrl);
-                    }
-                });
-            });
+            await redisClient.decr(connectionCountKey);
+            return res.status(circuitBreakerResponse.status).json(circuitBreakerResponse.data);
         };
     } catch (error) {
         throw new Error(error.message);
@@ -190,6 +198,16 @@ function monitorLoad() {
 }
 
 intervalId = setInterval(monitorLoad, MONITORING_INTERVAL);
+
+app.use((req, _res, next) => {
+    req.rawBody = '';
+    req.on('data', chunk => {
+        req.rawBody += chunk;
+    });
+    req.on('end', () => {
+        next();
+    });
+});
 
 app.use('/ts', limiter, async (req, res, next) => {
     try {
