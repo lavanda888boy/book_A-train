@@ -31,30 +31,37 @@ const LOAD_BALANCER_TYPE = Number(process.env.LOAD_BALANCER_TYPE);
 
 
 async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
-    let consecutiveFailures = 0;
     const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await makeRequestToService(serviceUrl, req);
             console.log(`Attempt ${attempt} successful:`, response.data);
-
-            consecutiveFailures = 0;
             return { status: response.status, data: response.data };
         } catch (error) {
             if (error.status === 408 || error.status >= 500) {
-                consecutiveFailures++;
                 console.log(`Attempt ${attempt} failed with status ${error.status}:`, error.message);
             } else {
                 return { status: error.status, data: error.data };
             }
         }
     }
+    
+    await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
+    console.log(`${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`);
 
-    if (consecutiveFailures === maxRetries) {
-        await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
-        console.log(`${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`);
-        return { status: 503, data: { detail: 'Service Unavailable' } };
+    let nextServiceUrl;
+
+    try {
+        if (LOAD_BALANCER_TYPE == 0) {
+            nextServiceUrl = await getRoundRobinService(serviceKey);
+        } else {
+            nextServiceUrl = await getLeastConnectionsService(serviceKey);
+        }
+
+        return await handleCircuitBreaker(serviceKey, nextServiceUrl, req);
+    } catch (error) {
+        return { status: 503, data: { detail: `${serviceKey} is no loger available` } };
     }
 }
 
@@ -201,9 +208,11 @@ intervalId = setInterval(monitorLoad, MONITORING_INTERVAL);
 
 app.use((req, _res, next) => {
     req.rawBody = '';
+
     req.on('data', chunk => {
         req.rawBody += chunk;
     });
+
     req.on('end', () => {
         next();
     });
