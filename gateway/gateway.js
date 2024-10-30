@@ -7,9 +7,6 @@ const axios = require('axios');
 const app = express();
 require('dotenv').config();
 
-const httpProxy = require('http-proxy')
-proxy = httpProxy.createProxyServer()
-
 const redisClient = redis.createClient({
     url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
 });
@@ -36,7 +33,7 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await makeRequestToService(serviceUrl, req);
-            console.log(`Attempt ${attempt} successful:`, response.data);
+            console.log(`Attempt ${attempt}; successful response:`, response.data);
             return { status: response.status, data: response.data };
         } catch (error) {
             if (error.status === 408 || error.status >= 500) {
@@ -50,18 +47,14 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
     await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
     console.log(`${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`);
 
-    let nextServiceUrl;
-
     try {
-        if (LOAD_BALANCER_TYPE == 0) {
-            nextServiceUrl = await getRoundRobinService(serviceKey);
-        } else {
-            nextServiceUrl = await getLeastConnectionsService(serviceKey);
-        }
+        const nextServiceUrl = (LOAD_BALANCER_TYPE === 0) 
+            ? await getRoundRobinService(serviceKey)
+            : await getLeastConnectionsService(serviceKey);
 
         return await handleCircuitBreaker(serviceKey, nextServiceUrl, req);
     } catch (error) {
-        return { status: 503, data: { detail: `${serviceKey} is no loger available` } };
+        return { status: 503, data: { detail: `${serviceKey} is no longer available` } };
     }
 }
 
@@ -134,11 +127,6 @@ async function proxyRoundRobinRequest(serviceKey) {
                 return res.status(503).json(circuitBreakerResponse.data);
             }
 
-            proxy.web(req, res, { target: targetUrl, timeout: Number(process.env.PROXY_TIMEOUT) }, async (err) => {
-                console.error('Proxy error:', err);
-                res.status(502).json({ detail: 'Bad Gateway' });
-            });
-
             return res.status(circuitBreakerResponse.status).json(circuitBreakerResponse.data);
         };
     } catch (error) {
@@ -164,12 +152,6 @@ async function proxyRequestWithLeastConnections(serviceKey) {
                 await redisClient.decr(connectionCountKey);
                 return res.status(503).json(circuitBreakerResponse.data);
             }
-
-            proxy.web(req, res, { target: targetUrl, timeout: Number(process.env.PROXY_TIMEOUT) }, async (err) => {
-                console.error('Proxy error:', err);
-                res.status(502).json({ detail: 'Bad Gateway' });
-                await redisClient.decr(connectionCountKey);
-            });
 
             await redisClient.decr(connectionCountKey);
             return res.status(circuitBreakerResponse.status).json(circuitBreakerResponse.data);

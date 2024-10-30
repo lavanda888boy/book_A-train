@@ -20,8 +20,6 @@ def register_train(train: TrainBaseDto, train_manager: TrainManager = Depends(ge
 
 @router.get("/trains", response_model=List[TrainInfoDto])
 def get_all_trains(train_manager: TrainManager = Depends(get_train_manager)):
-    import time
-    time.sleep(5)
     return train_manager.get_all()
 
 

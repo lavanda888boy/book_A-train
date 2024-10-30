@@ -5,7 +5,6 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     environment:
-      PROXY_TIMEOUT: 6000
       WINDOW_SIZE: 1000
       MAX_CONCURRENT_REQUESTS: 5
       PORT: 8080
@@ -67,6 +66,8 @@ services:
       RABBITMQ_PASS: ${RABBITMQ_PASS}
       SD_HOST: service_discovery
       SD_PORT: 50051
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
     ports:
       - '8000'
     networks:
@@ -96,6 +97,8 @@ services:
       RABBITMQ_PASS: ${RABBITMQ_PASS}
       SD_HOST: service_discovery
       SD_PORT: 50051
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
     ports:
       - '9000:8000'
     networks:
@@ -123,6 +126,8 @@ services:
   #     RABBITMQ_PASS: ${RABBITMQ_PASS}
   #     SD_HOST: service_discovery
   #     SD_PORT: 50051
+        # LOGSTASH_HOST: logstash
+        # LOGSTASH_PORT: 5000
   #   ports:
   #     - '9001:8000'
   #   networks:
@@ -150,6 +155,8 @@ services:
   #     RABBITMQ_PASS: ${RABBITMQ_PASS}
   #     SD_HOST: service_discovery
   #     SD_PORT: 50051
+        # LOGSTASH_HOST: logstash
+        # LOGSTASH_PORT: 5000
   #   ports:
   #     - '9002:8000'
   #   networks:
@@ -210,11 +217,56 @@ services:
     networks:
       - micro-network
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - micro-network
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.14.0
+    container_name: logstash
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    networks:
+      - micro-network
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.14.0
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - micro-network
+    depends_on:
+      - elasticsearch
+
 volumes:
   redis_discovery-data:
   postgres_trains-data:
   postgres_lobbies-data:
   redis_cache-data:
+  elasticsearch-data:
 
 networks:
   micro-network:
