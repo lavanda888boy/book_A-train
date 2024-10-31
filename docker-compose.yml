@@ -14,6 +14,8 @@ services:
       CRITICAL_LOAD: 2
       MONITORING_INTERVAL: 5000
       LOAD_BALANCER_TYPE: 1
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 6000
     ports:
       - '7070:8080'
     networks:
@@ -32,6 +34,8 @@ services:
       GRPC_PORT: 50051
       REDIS_HOST: redis_discovery
       REDIS_PORT: 6379
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 6000
     ports:
       - '6060:8080'
       - '50051:50051'
@@ -39,6 +43,8 @@ services:
       - micro-network
     depends_on:
       - redis_discovery
+    volumes:
+      - service_discovery-data:/app/logs
 
   redis_discovery:
     image: redis:latest
@@ -72,15 +78,15 @@ services:
       - '8000'
     networks:
       - micro-network
-    deploy:
-      replicas: 3
+    # deploy:
+    #   replicas: 3
     depends_on:
       - postgres_trains
       - gateway
       - redis_cache
       - rabbitmq
 
-  lobby_service_1:
+  lobby_service:
     build:
       context: ./lobby_service
       dockerfile: Dockerfile  
@@ -103,69 +109,13 @@ services:
       - '9000:8000'
     networks:
       - micro-network
+    # deploy:
+    #   replicas: 3
     depends_on:
       - postgres_lobbies
       - gateway
       - redis_cache
       - rabbitmq
-
-  # lobby_service_2:
-  #   build:
-  #     context: ./lobby_service
-  #     dockerfile: Dockerfile  
-  #   entrypoint: ["./entrypoint.sh"]
-  #   restart: on-failure
-  #   environment:
-  #     SERVICE_NAME: lobby_service
-  #     DATABASE_URL: ${LOBBY_DATABASE_URL}
-  #     BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
-  #     REDIS_HOST: redis_cache
-  #     REDIS_PORT: 6379
-  #     RABBITMQ_HOST: rabbitmq
-  #     RABBITMQ_USER: ${RABBITMQ_USER}
-  #     RABBITMQ_PASS: ${RABBITMQ_PASS}
-  #     SD_HOST: service_discovery
-  #     SD_PORT: 50051
-        # LOGSTASH_HOST: logstash
-        # LOGSTASH_PORT: 5000
-  #   ports:
-  #     - '9001:8000'
-  #   networks:
-  #     - micro-network
-  #   depends_on:
-  #     - postgres_lobbies
-  #     - gateway
-  #     - redis_cache
-  #     - rabbitmq
-
-  # lobby_service_3:
-  #   build:
-  #     context: ./lobby_service
-  #     dockerfile: Dockerfile  
-  #   entrypoint: ["./entrypoint.sh"]
-  #   restart: on-failure
-  #   environment:
-  #     SERVICE_NAME: lobby_service
-  #     DATABASE_URL: ${LOBBY_DATABASE_URL}
-  #     BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
-  #     REDIS_HOST: redis_cache
-  #     REDIS_PORT: 6379
-  #     RABBITMQ_HOST: rabbitmq
-  #     RABBITMQ_USER: ${RABBITMQ_USER}
-  #     RABBITMQ_PASS: ${RABBITMQ_PASS}
-  #     SD_HOST: service_discovery
-  #     SD_PORT: 50051
-        # LOGSTASH_HOST: logstash
-        # LOGSTASH_PORT: 5000
-  #   ports:
-  #     - '9002:8000'
-  #   networks:
-  #     - micro-network
-  #   depends_on:
-  #     - postgres_lobbies
-  #     - gateway
-  #     - redis_cache
-  #     - rabbitmq
 
   postgres_trains:
     image: postgres:16-alpine3.20
@@ -217,6 +167,17 @@ services:
     networks:
       - micro-network
 
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    command: ["filebeat", "-e", "-strict.perms=false"]
+    networks:
+      - micro-network
+    volumes:
+      - service_discovery-data:/usr/share/filebeat/data
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+    depends_on:
+      - logstash
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
     container_name: elasticsearch
@@ -266,6 +227,7 @@ volumes:
   postgres_trains-data:
   postgres_lobbies-data:
   redis_cache-data:
+  service_discovery-data:
   elasticsearch-data:
 
 networks:

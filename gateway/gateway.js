@@ -3,9 +3,21 @@ const redis = require('redis');
 const rateLimit = require('express-rate-limit');
 
 const axios = require('axios');
+const winston = require('winston');
 
 const app = express();
 require('dotenv').config();
+
+const logger = winston.createLogger({
+    transports: [
+        new winston.transports.Http({
+            host: process.env.LOGSTASH_HOST,
+            port: process.env.LOGSTASH_PORT,
+            ssl: false,
+            level: 'info',
+        })
+    ],
+});
 
 const redisClient = redis.createClient({
     url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
@@ -33,11 +45,21 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await makeRequestToService(serviceUrl, req);
-            console.log(`Attempt ${attempt}; successful response:`, response.data);
+        
+            logger.info(JSON.stringify({
+                "service": "gateway",
+                "module": "circuit_breaker",
+                "msg": `Attempt ${attempt} to ${serviceKey} ${serviceUrl} returned status ${response.status}`,
+            }));
+
             return { status: response.status, data: response.data };
         } catch (error) {
             if (error.status === 408 || error.status >= 500) {
-                console.log(`Attempt ${attempt} failed with status ${error.status}:`, error.message);
+                logger.error(JSON.stringify({
+                    "service": "gateway",
+                    "module": "circuit_breaker",
+                    "msg": `Attempt ${attempt} failed with status ${error.status}: ${error.message}`,
+                }));
             } else {
                 return { status: error.status, data: error.data };
             }
@@ -45,7 +67,12 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
     }
     
     await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
-    console.log(`${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`);
+
+    logger.error(JSON.stringify({
+        "service": "gateway",
+        "module": "circuit_breaker",
+        "msg": `${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`,
+    }));
 
     try {
         const nextServiceUrl = (LOAD_BALANCER_TYPE === 0) 
@@ -171,6 +198,26 @@ async function getProxyMiddleware(serviceKey) {
     }
 }
 
+function logRequest(req) {
+    logger.info(JSON.stringify({
+        service: 'gateway',
+        event: 'request',
+        method: req.method,
+        url: req.url,
+        ip: req.ip,
+    }));
+}
+
+function logResponse(req, res) {
+    logger.info(JSON.stringify({
+        service: 'gateway',
+        event: 'response',
+        status_code: res.statusCode,
+        method: req.method,
+        url: req.url,
+    }));
+}
+
 let requestCounts = {
     train_booking_service: 0,
     lobby_service: 0,
@@ -179,7 +226,11 @@ let requestCounts = {
 function monitorLoad() {
     Object.keys(requestCounts).forEach(serviceKey => {
         if (requestCounts[serviceKey] >= CRITICAL_LOAD) {
-            console.warn(`ALERT: Critical load reached for ${serviceKey}: ${requestCounts[serviceKey]} requests per ${MONITORING_INTERVAL / 1000} seconds!`);
+            logger.alert(JSON.stringify({
+                "service": "gateway",
+                "module": "load_monitor",
+                "msg": `ALERT: Critical load reached for ${serviceKey}: ${requestCounts[serviceKey]} requests per ${MONITORING_INTERVAL / 1000} seconds!`,
+            }));
         }
 
         requestCounts[serviceKey] = 0;
@@ -205,7 +256,11 @@ app.use('/ts', limiter, async (req, res, next) => {
         requestCounts['train_booking_service']++;
 
         const proxyMiddleware = await getProxyMiddleware('train_booking_service');
+       
+        logRequest(req);
         proxyMiddleware(req, res, next);
+        logResponse(req, res);
+
     } catch (error) {
         res.status(503).json({ detail: error.message });
     }
@@ -216,7 +271,11 @@ app.use('/ls', limiter, async (req, res, next) => {
         requestCounts['lobby_service']++;
 
         const proxyMiddleware = await getProxyMiddleware('lobby_service');
+
+        logRequest(req);
         proxyMiddleware(req, res, next);
+        logResponse(req, res);
+    
     } catch (error) {
         res.status(503).json({ detail: error.message });
     }
@@ -227,5 +286,9 @@ app.get('/status', (_req, res) => {
 });
 
 app.listen(Number(process.env.PORT), () => {
-    console.log(`Gateway server is up and running on port ${process.env.PORT}`);
+    logger.info(JSON.stringify({
+        service: 'gateway',
+        event: 'startup',
+        port: process.env.PORT,
+    }));
 });
