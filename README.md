@@ -41,6 +41,12 @@ It is important to mention that in order for the system to behave correctly you 
 
 By following these two rules you will be able to enjoy exploring the world of microservices using my application.
 
+Also, if you would like to run some unit tests for the lobby management service, navigate into the `lobby_service` folder and execute the following command:
+
+```
+python -m unittest discover
+```
+
 ## Application Suitability
 * **Microservice architecture** is a design approach where a software application is divided into small, independent services that communicate with each other over a network. Each service focuses on a specific functionality and can be developed, deployed, and scaled independently. 
 * Regarding the suitability of this architecture for the train booking system:

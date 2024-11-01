@@ -12,12 +12,10 @@ class TestDeleteLobbyById(unittest.TestCase):
         self.mock_redis_cache = MagicMock()
         self.manager = LobbyManager(self.mock_db, self.mock_redis_cache)
 
-
     def test_delete_by_id_returns_http_exception(self):
         lobby_id = 1
         self.mock_db.query.return_value.filter.return_value.first.return_value = None
         self.assertRaises(HTTPException, self.manager.delete, lobby_id)
-
 
     def test_delete_by_id_returns_deleted_lobby_id(self):
         lobby = Lobby(id=1, train_id=1)

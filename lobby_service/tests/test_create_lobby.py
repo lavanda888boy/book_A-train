@@ -12,16 +12,14 @@ class TestCreateLobby(unittest.TestCase):
         self.mock_redis_cache = MagicMock()
         self.manager = LobbyManager(self.mock_db, self.mock_redis_cache)
 
-
     def test_create_returns_http_exception(self):
         lobby = Lobby(id=1, train_id=1)
         self.mock_db.query.return_value.filter.return_value.first.return_value = lobby
         self.assertRaises(HTTPException, self.manager.create, lobby)
 
-
     def test_create_returns_created_lobby_id(self):
         lobby = Lobby(id=1, train_id=1)
-        
+
         self.mock_db.query.return_value.filter.return_value.first.return_value = None
         self.mock_db.add.side_effect = lambda l: setattr(l, 'id', 1)
         self.mock_db.commit.return_value = None

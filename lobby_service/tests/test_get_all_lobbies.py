@@ -11,7 +11,6 @@ class TestGetAllLobbies(unittest.TestCase):
         self.mock_redis_cache = MagicMock()
         self.manager = LobbyManager(self.mock_db, self.mock_redis_cache)
 
-
     def test_get_all_returns_cached_lobbies(self):
         cached_lobbies = '[{"id": 1, "train_id": "1"}, {"id": 2, "train_id": "2"}]'
         self.mock_redis_cache.get.return_value = cached_lobbies
@@ -22,7 +21,6 @@ class TestGetAllLobbies(unittest.TestCase):
         self.assertEqual(result[0]['id'], 1)
 
         self.mock_db.query.assert_not_called()
-
 
     def test_get_all_returns_from_db_if_no_cache(self):
         self.mock_redis_cache.get.return_value = None
