@@ -157,7 +157,7 @@ services:
     networks:
       - micro-network
     volumes:
-      - ./redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
 
   redis_cache-2:
     image: redis:latest
@@ -167,7 +167,7 @@ services:
     networks:
       - micro-network
     volumes:
-      - ./redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
 
   redis_cache-3:
     image: redis:latest
@@ -177,7 +177,18 @@ services:
     networks:
       - micro-network
     volumes:
-      - ./redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
+
+  redis_cluster_init:
+    image: redis:latest
+    restart: no
+    command: ["/bin/sh", "-c", "redis-cli --cluster create book_a-train-redis_cache-1-1:6379 book_a-train-redis_cache-2-1:6379 book_a-train-redis_cache-3-1:6379 --cluster-yes"]
+    networks:
+      - micro-network
+    depends_on:
+      - redis_cache-1
+      - redis_cache-2
+      - redis_cache-3
 
   rabbitmq:
     image: rabbitmq:management
@@ -198,7 +209,7 @@ services:
       - micro-network
     volumes:
       - service_discovery-data:/usr/share/filebeat/data
-      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
     depends_on:
       - logstash
 
@@ -231,7 +242,7 @@ services:
     networks:
       - micro-network
     volumes:
-      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
     depends_on:
       - elasticsearch
 

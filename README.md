@@ -26,48 +26,7 @@ After that run the following command in the terminal:
 docker compose up --build
 ```
 
-The containers will be created and the corresponding volumes will be generated and mounted by Docker. Further on, it is necessary to create redis cluster using the following command in a separate terminal (if you change container names adjust the command accordingly):
-
-```
-docker exec -i book_a-train-redis_cache-1-1 redis-cli --cluster create book_a-train-redis_cache-1-1:6379 book_a-train-redis_cache-2-1:6379 book_a-train-redis_cache-3-1:6379
-```
-
-The output should be the following (you will be prompted to accept cluster configuration):
-
-```
->>> Performing hash slots allocation on 3 nodes...
-Master[0] -> Slots 0 - 5460
-Master[1] -> Slots 5461 - 10922
-Master[2] -> Slots 10923 - 16383
-M: c5627a6f824d3759268ae9a0a54661f1e8d9d52f book_a-train-redis_cache-1-1:6379
-   slots:[0-5460] (5461 slots) master
-M: 3d07191938b04694c6adf01cbfe298fd065bd56b book_a-train-redis_cache-2-1:6379
-   slots:[5461-10922] (5462 slots) master
-M: 18d2471bfe7c9eb9477ba0818f6daa79b2b5093d book_a-train-redis_cache-3-1:6379
-   slots:[10923-16383] (5461 slots) master
-Can I set the above configuration? (type 'yes' to accept): yes
-```
-
-After typing `yes` the system will configure the cluster and distribute hash slotes between the nodes:
-
-```
->>> Nodes configuration updated
->>> Assign a different config epoch to each node
->>> Sending CLUSTER MEET messages to join the cluster
-Waiting for the cluster to join
-.
->>> Performing Cluster Check (using node book_a-train-redis_cache-1-1:6379)
-M: c5627a6f824d3759268ae9a0a54661f1e8d9d52f book_a-train-redis_cache-1-1:6379
-   slots:[0-5460] (5461 slots) master
-M: 3d07191938b04694c6adf01cbfe298fd065bd56b 172.19.0.8:6379
-   slots:[5461-10922] (5462 slots) master
-M: 18d2471bfe7c9eb9477ba0818f6daa79b2b5093d 172.19.0.4:6379
-   slots:[10923-16383] (5461 slots) master
-[OK] All nodes agree about slots configuration.
->>> Check for open slots...
->>> Check slots coverage...
-[OK] All 16384 slots covered.
-```
+The containers will be created and the corresponding volumes will be generated and mounted by Docker. The `redis_cluster_init` container will initialize the redis cluster; after that it is going to stop.
 
 If you want to terminate the system execution run (you may use `-v` option to remove the volumes generated initially):
 
