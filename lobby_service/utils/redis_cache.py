@@ -1,14 +1,15 @@
-import redis
+from redis import RedisCluster, ConnectionError
 import os
 
-redis_host = os.getenv("REDIS_HOST")
-redis_port = os.getenv("REDIS_PORT")
 
 def get_redis_client():
-    redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+    redis_client = RedisCluster(
+        host=os.getenv("REDIS_HOST"), port=os.getenv('REDIS_PORT'))
+
     try:
         redis_client.ping()
-        print("Connected to Redis")
-    except redis.ConnectionError:
-        print("Could not connect to Redis")
+        print("Connected to Redis Cluster")
+    except ConnectionError:
+        print("Could not connect to Redis Cluster")
+
     return redis_client
