@@ -17,6 +17,7 @@ router = APIRouter()
 
 BOOKINGS_SERVICE_URL = os.getenv("BOOKINGS_SERVICE_URL")
 
+
 @router.get("/status")
 def status():
     return JSONResponse(content={"status": "OK", "message": "Lobby service is running"})
@@ -44,14 +45,16 @@ def delete_lobby_by_id(lobby_id: int, lobby_manager: LobbyManager = Depends(get_
 
 active_connections = {}
 
+
 @router.websocket("/lobbies/ws/{lobby_id}")
 async def websocket_lobby(websocket: WebSocket, lobby_id: int, db: Session = Depends(get_db),
-                           rabbitmq: RabbitMQ = Depends(get_rabbitmq)):
+                          rabbitmq: RabbitMQ = Depends(get_rabbitmq)):
     lobby = db.query(Lobby).filter(Lobby.train_id == lobby_id).first()
 
     if lobby is None:
         await websocket.close(code=1008)
-        raise HTTPException(status_code=404, detail="Lobby for this train not found")
+        raise HTTPException(
+            status_code=404, detail="Lobby for this train not found")
 
     await websocket.accept()
 
@@ -69,9 +72,11 @@ async def websocket_lobby(websocket: WebSocket, lobby_id: int, db: Session = Dep
             await connection.send_text(message)
 
     def rabbitmq_callback(message: str):
-        asyncio.run_coroutine_threadsafe(broadcast_message_to_lobby(message), loop)
+        asyncio.run_coroutine_threadsafe(
+            broadcast_message_to_lobby(message), loop)
 
-    thread = threading.Thread(target=rabbitmq.consume_messages, args=(str(lobby_id), rabbitmq_callback), daemon=True)
+    thread = threading.Thread(target=rabbitmq.consume_messages, args=(
+        str(lobby_id), rabbitmq_callback), daemon=True)
     thread.start()
 
     try:
@@ -92,12 +97,14 @@ async def websocket_lobby(websocket: WebSocket, lobby_id: int, db: Session = Dep
 @router.post("/start-booking")
 def start_booking_registration(booking: BookingDto):
     try:
-        response = requests.post(BOOKINGS_SERVICE_URL, json=booking.model_dump())
+        response = requests.post(BOOKINGS_SERVICE_URL,
+                                 json=booking.model_dump())
         response.raise_for_status()
 
         return {"message": "Booking registered successfully", "booking_id": response.content}
-    
+
     except requests.exceptions.HTTPError:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        raise HTTPException(
+            status_code=response.status_code, detail=response.text)
     except Exception as err:
         raise HTTPException(status_code=500, detail=str(err))

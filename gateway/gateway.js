@@ -10,6 +10,7 @@ require('dotenv').config();
 
 const logger = winston.createLogger({
     transports: [
+        new winston.transports.Console(),
         new winston.transports.Http({
             host: process.env.LOGSTASH_HOST,
             port: process.env.LOGSTASH_PORT,
@@ -198,24 +199,97 @@ async function getProxyMiddleware(serviceKey) {
     }
 }
 
-function logRequest(req) {
-    logger.info(JSON.stringify({
+async function orchestrateTrainAndLobbyCreationSaga(req, trainBookingServiceKey = 'train_booking_service', lobbyServiceKey = 'lobby_service') {
+    try {
+        const trainBookingServiceReq = {
+            method: 'POST',
+            path: '/trains',
+            rawBody: req.rawBody,
+            headers: req.headers
+        };
+
+        const trainBookingServiceUrl = (LOAD_BALANCER_TYPE === 0) 
+            ? await getRoundRobinService(trainBookingServiceKey)
+            : await getLeastConnectionsService(trainBookingServiceKey);
+
+        const trainBookingServiceResponse = await handleCircuitBreaker(trainBookingServiceKey, `${trainBookingServiceUrl}`, trainBookingServiceReq);
+
+        if (trainBookingServiceResponse.status !== 200) {
+            throw new Error('Train registration failed');
+        }
+
+        const lobbyServiceReq = {
+            method: 'POST',
+            path: '/lobbies',
+            rawBody: JSON.stringify({ train_id: trainBookingServiceResponse.data }),
+            headers: {
+                'Content-Type': 'application/json', 
+            }
+        };
+
+        const lobbyServiceUrl = (LOAD_BALANCER_TYPE === 0) 
+            ? await getRoundRobinService(lobbyServiceKey)
+            : await getLeastConnectionsService(lobbyServiceKey);
+            
+        const lobbyServiceResponse = await handleCircuitBreaker(lobbyServiceKey, lobbyServiceUrl, lobbyServiceReq);
+
+        if (lobbyServiceResponse.status !== 200) {
+            const trainBookingServiceRollbackReq = {
+                method: 'DELETE',
+                path: `/trains/${trainBookingServiceResponse.data}`,
+                headers: req.headers
+            };
+
+            await handleCircuitBreaker(trainBookingServiceKey, trainBookingServiceUrl, trainBookingServiceRollbackReq);
+            
+            throw new Error('Lobby creation failed and train registration was rolled back');
+        }
+
+        return {
+            status: 200,
+            data: {
+                trainRegistration: trainBookingServiceResponse.data,
+                lobbyCreation: lobbyServiceResponse.data,
+            }
+        };
+    } catch (error) {
+        return {
+            status: 500,
+            data: { detail: 'Train registration saga failed: ' + error.message },
+        };
+    }
+}
+
+function logRequest(req, module=null) {
+    const logObject ={
         service: 'gateway',
         event: 'request',
         method: req.method,
         url: req.url,
         ip: req.ip,
-    }));
+    };
+
+    if (module !== null) {
+        logObject.module = module;
+    }
+
+    logger.info(JSON.stringify(logObject));
 }
 
-function logResponse(req, res) {
-    logger.info(JSON.stringify({
+function logResponse(req, res, module=null) {
+    const logObject = {
         service: 'gateway',
         event: 'response',
         status_code: res.statusCode,
         method: req.method,
         url: req.url,
-    }));
+    };
+
+    if (module !== null) {
+        logObject.module = module;
+    }
+
+    logger.info(JSON.stringify(logObject));
 }
 
 let requestCounts = {
@@ -238,6 +312,7 @@ function monitorLoad() {
 }
 
 intervalId = setInterval(monitorLoad, MONITORING_INTERVAL);
+
 
 app.use((req, _res, next) => {
     req.rawBody = '';
@@ -263,6 +338,8 @@ app.use('/ts', limiter, async (req, res, next) => {
 
     } catch (error) {
         res.status(503).json({ detail: error.message });
+    } finally {
+        requestCounts['train_booking_service']--;
     }
 });
 
@@ -278,6 +355,26 @@ app.use('/ls', limiter, async (req, res, next) => {
     
     } catch (error) {
         res.status(503).json({ detail: error.message });
+    } finally {
+        requestCounts['lobby_service']--;
+    }
+});
+
+app.use('/register-train-saga', limiter, async (req, res) => {
+    try {
+        requestCounts['train_booking_service']++;
+        requestCounts['lobby_service']++;
+
+        logRequest(req, 'saga');
+        const sagaResult = await orchestrateTrainAndLobbyCreationSaga(req);
+        res.status(sagaResult.status).json(sagaResult.data);
+        logResponse(req, res, 'saga');
+        
+    } catch (error) {
+        res.status(502).json({ detail: 'Register train saga failed: ' + error.message });
+    } finally {
+        requestCounts['train_booking_service']--;
+        requestCounts['lobby_service']--;
     }
 });
 
