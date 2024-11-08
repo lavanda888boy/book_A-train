@@ -38,12 +38,12 @@ let currentIndexes = {};
 const CRITICAL_LOAD = Number(process.env.CRITICAL_LOAD);
 const MONITORING_INTERVAL = Number(process.env.MONITORING_INTERVAL);
 const LOAD_BALANCER_TYPE = Number(process.env.LOAD_BALANCER_TYPE);
+const MAX_CIRCUIT_BREAKER_RETRIES = Number(process.env.MAX_CIRCUIT_BREAKER_RETRIES);
+const MAX_CIRCUIT_BREAKER_SERVICE_CHECKS = Number(process.env.MAX_CIRCUIT_BREAKER_SERVICE_CHECKS);
 
 
-async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
-    const maxRetries = 3;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+async function handleCircuitBreaker(serviceKey, serviceUrl, req, serviceChecks = 0) {
+    for (let attempt = 1; attempt <= MAX_CIRCUIT_BREAKER_RETRIES; attempt++) {
         try {
             const response = await makeRequestToService(serviceUrl, req);
         
@@ -67,6 +67,7 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
         }
     }
     
+    serviceChecks++;
     await redisClient.lRem(serviceKey, 0, serviceUrl.replace(/^http:\/\//, ''));
 
     logger.error(JSON.stringify({
@@ -75,14 +76,18 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req) {
         "msg": `${serviceKey} ${serviceUrl} is no longer available due to consecutive errors`,
     }));
 
+    if (serviceChecks >= MAX_CIRCUIT_BREAKER_SERVICE_CHECKS) {
+        return { status: 503, data: { detail: `${serviceKey} is not available` } };
+    }
+
     try {
         const nextServiceUrl = (LOAD_BALANCER_TYPE === 0) 
             ? await getRoundRobinService(serviceKey)
             : await getLeastConnectionsService(serviceKey);
 
-        return await handleCircuitBreaker(serviceKey, nextServiceUrl, req);
+        return await handleCircuitBreaker(serviceKey, nextServiceUrl, req, serviceChecks);
     } catch (error) {
-        return { status: 503, data: { detail: `${serviceKey} is no longer available` } };
+        return { status: 503, data: { detail: `${serviceKey} is not available` } };
     }
 }
 
@@ -300,10 +305,10 @@ let requestCounts = {
 function monitorLoad() {
     Object.keys(requestCounts).forEach(serviceKey => {
         if (requestCounts[serviceKey] >= CRITICAL_LOAD) {
-            logger.alert(JSON.stringify({
+            logger.warn(JSON.stringify({
                 "service": "gateway",
                 "module": "load_monitor",
-                "msg": `ALERT: Critical load reached for ${serviceKey}: ${requestCounts[serviceKey]} requests per ${MONITORING_INTERVAL / 1000} seconds!`,
+                "msg": `WARNING: Critical load reached for ${serviceKey}: ${requestCounts[serviceKey]} requests per ${MONITORING_INTERVAL / 1000} seconds!`,
             }));
         }
 
@@ -338,8 +343,6 @@ app.use('/ts', limiter, async (req, res, next) => {
 
     } catch (error) {
         res.status(503).json({ detail: error.message });
-    } finally {
-        requestCounts['train_booking_service']--;
     }
 });
 
@@ -355,8 +358,6 @@ app.use('/ls', limiter, async (req, res, next) => {
     
     } catch (error) {
         res.status(503).json({ detail: error.message });
-    } finally {
-        requestCounts['lobby_service']--;
     }
 });
 
@@ -372,9 +373,6 @@ app.use('/register-train-saga', limiter, async (req, res) => {
         
     } catch (error) {
         res.status(502).json({ detail: 'Register train saga failed: ' + error.message });
-    } finally {
-        requestCounts['train_booking_service']--;
-        requestCounts['lobby_service']--;
     }
 });
 

@@ -12,8 +12,10 @@ services:
       REDIS_PORT: 6379
       ERROR_THRESHOLD: 3
       CRITICAL_LOAD: 2
-      MONITORING_INTERVAL: 5000
+      MONITORING_INTERVAL: 10000
       LOAD_BALANCER_TYPE: 1
+      MAX_CIRCUIT_BREAKER_RETRIES: 2
+      MAX_CIRCUIT_BREAKER_SERVICE_CHECKS: 2
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 6000
     ports:
@@ -78,8 +80,8 @@ services:
       - '8000'
     networks:
       - micro-network
-    # deploy:
-    #   replicas: 3
+    deploy:
+      replicas: 3
     depends_on:
       - postgres_trains
       - gateway
@@ -88,7 +90,7 @@ services:
       - redis_cache-3
       - rabbitmq
 
-  lobby_service:
+  lobby_service_1:
     build:
       context: ./lobby_service
       dockerfile: Dockerfile  
@@ -108,11 +110,71 @@ services:
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 5000
     ports:
-      - '9000:8000'
+      - 9000:8000
     networks:
       - micro-network
-    # deploy:
-    #   replicas: 3
+    depends_on:
+      - postgres_lobbies
+      - gateway
+      - redis_cache-1
+      - redis_cache-2
+      - redis_cache-3
+      - rabbitmq
+
+  lobby_service_2:
+    build:
+      context: ./lobby_service
+      dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure
+    environment:
+      SERVICE_NAME: lobby_service
+      DATABASE_URL: ${LOBBY_DATABASE_URL}
+      BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
+      REDIS_HOST: redis_cache-1
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
+    ports:
+      - 9001:8000
+    networks:
+      - micro-network
+    depends_on:
+      - postgres_lobbies
+      - gateway
+      - redis_cache-1
+      - redis_cache-2
+      - redis_cache-3
+      - rabbitmq
+
+  lobby_service_3:
+    build:
+      context: ./lobby_service
+      dockerfile: Dockerfile  
+    entrypoint: ["./entrypoint.sh"]
+    restart: on-failure
+    environment:
+      SERVICE_NAME: lobby_service
+      DATABASE_URL: ${LOBBY_DATABASE_URL}
+      BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
+      REDIS_HOST: redis_cache-1
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASS: ${RABBITMQ_PASS}
+      SD_HOST: service_discovery
+      SD_PORT: 50051
+      LOGSTASH_HOST: logstash
+      LOGSTASH_PORT: 5000
+    ports:
+      - 9002:8000
+    networks:
+      - micro-network
     depends_on:
       - postgres_lobbies
       - gateway
@@ -202,60 +264,60 @@ services:
     networks:
       - micro-network
 
-  # filebeat:
-  #   image: docker.elastic.co/beats/filebeat:8.15.3
-  #   command: ["filebeat", "-e", "-strict.perms=false"]
-  #   networks:
-  #     - micro-network
-  #   volumes:
-  #     - service_discovery-data:/usr/share/filebeat/data
-  #     - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
-  #   depends_on:
-  #     - logstash
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    command: ["filebeat", "-e", "-strict.perms=false"]
+    networks:
+      - micro-network
+    volumes:
+      - service_discovery-data:/usr/share/filebeat/data
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+    depends_on:
+      - logstash
 
-  # elasticsearch:
-  #   image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
-  #   container_name: elasticsearch
-  #   environment:
-  #     - discovery.type=single-node
-  #     - xpack.security.enabled=false
-  #     - bootstrap.memory_lock=true
-  #     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-  #   ulimits:
-  #     memlock:
-  #       soft: -1
-  #       hard: -1
-  #   ports:
-  #     - "9200:9200"
-  #     - "9300:9300"
-  #   networks:
-  #     - micro-network
-  #   volumes:
-  #     - elasticsearch-data:/usr/share/elasticsearch/data
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - micro-network
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
 
-  # logstash:
-  #   image: docker.elastic.co/logstash/logstash:7.14.0
-  #   container_name: logstash
-  #   ports:
-  #     - "5000:5000"
-  #     - "9600:9600"
-  #   networks:
-  #     - micro-network
-  #   volumes:
-  #     - ./config/logstash/pipeline:/usr/share/logstash/pipeline
-  #   depends_on:
-  #     - elasticsearch
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.14.0
+    container_name: logstash
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    networks:
+      - micro-network
+    volumes:
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
 
-  # kibana:
-  #   image: docker.elastic.co/kibana/kibana:7.14.0
-  #   environment:
-  #     - ELASTICSEARCH_URL=http://elasticsearch:9200
-  #   ports:
-  #     - "5601:5601"
-  #   networks:
-  #     - micro-network
-  #   depends_on:
-  #     - elasticsearch
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.14.0
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - micro-network
+    depends_on:
+      - elasticsearch
 
 volumes:
   redis_discovery-data:
