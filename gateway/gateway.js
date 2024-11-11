@@ -35,6 +35,7 @@ const limiter = rateLimit({
 
 let currentIndexes = {};
 
+const TIMEOUT = Number(process.env.TIMEOUT);
 const CRITICAL_LOAD = Number(process.env.CRITICAL_LOAD);
 const MONITORING_INTERVAL = Number(process.env.MONITORING_INTERVAL);
 const LOAD_BALANCER_TYPE = Number(process.env.LOAD_BALANCER_TYPE);
@@ -55,6 +56,16 @@ async function handleCircuitBreaker(serviceKey, serviceUrl, req, serviceChecks =
 
             return { status: response.status, data: response.data };
         } catch (error) {
+            if (error.code === 'EHOSTUNREACH' || error.code === 'ECONNREFUSED' || error.code === 'ECONNABORTED') {
+                logger.error(JSON.stringify({
+                    "service": "gateway",
+                    "module": "circuit_breaker",
+                    "msg": `Service ${serviceKey} ${serviceUrl} is unreachable: ${error.message}`,
+                }));
+
+                break;
+            }
+
             if (error.status === 408 || error.status >= 500) {
                 logger.error(JSON.stringify({
                     "service": "gateway",
@@ -99,6 +110,7 @@ async function makeRequestToService(serviceUrl, req) {
         url: url,
         headers: req.headers,
         data: req.rawBody,
+        timeout: TIMEOUT,
     };
 
     const response = await axios(options);
@@ -253,8 +265,8 @@ async function orchestrateTrainAndLobbyCreationSaga(req, trainBookingServiceKey 
         return {
             status: 200,
             data: {
-                trainRegistration: trainBookingServiceResponse.data,
-                lobbyCreation: lobbyServiceResponse.data,
+                registeredTrainId: trainBookingServiceResponse.data,
+                createdLobbyId: lobbyServiceResponse.data,
             }
         };
     } catch (error) {
@@ -338,7 +350,7 @@ app.use('/ts', limiter, async (req, res, next) => {
         const proxyMiddleware = await getProxyMiddleware('train_booking_service');
        
         logRequest(req);
-        proxyMiddleware(req, res, next);
+        await proxyMiddleware(req, res, next);
         logResponse(req, res);
 
     } catch (error) {
@@ -353,7 +365,7 @@ app.use('/ls', limiter, async (req, res, next) => {
         const proxyMiddleware = await getProxyMiddleware('lobby_service');
 
         logRequest(req);
-        proxyMiddleware(req, res, next);
+        await proxyMiddleware(req, res, next);
         logResponse(req, res);
     
     } catch (error) {

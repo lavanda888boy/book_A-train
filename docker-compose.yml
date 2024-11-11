@@ -10,7 +10,7 @@ services:
       PORT: 8080
       REDIS_HOST: redis_discovery
       REDIS_PORT: 6379
-      ERROR_THRESHOLD: 3
+      TIMEOUT: 8000
       CRITICAL_LOAD: 2
       MONITORING_INTERVAL: 10000
       LOAD_BALANCER_TYPE: 1
