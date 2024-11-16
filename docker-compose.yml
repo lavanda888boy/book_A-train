@@ -83,7 +83,7 @@ services:
     deploy:
       replicas: 3
     depends_on:
-      - postgres_trains
+      - postgres_trains_monitor
       - gateway
       - redis_cache-1
       - redis_cache-2
@@ -97,6 +97,7 @@ services:
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
+      &lobby_service_env
       SERVICE_NAME: lobby_service
       DATABASE_URL: ${LOBBY_DATABASE_URL}
       BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
@@ -128,18 +129,7 @@ services:
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
-      SERVICE_NAME: lobby_service
-      DATABASE_URL: ${LOBBY_DATABASE_URL}
-      BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
-      REDIS_HOST: redis_cache-1
-      REDIS_PORT: 6379
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER}
-      RABBITMQ_PASS: ${RABBITMQ_PASS}
-      SD_HOST: service_discovery
-      SD_PORT: 50051
-      LOGSTASH_HOST: logstash
-      LOGSTASH_PORT: 5000
+      <<: *lobby_service_env
     ports:
       - 9001:8000
     networks:
@@ -159,18 +149,7 @@ services:
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
-      SERVICE_NAME: lobby_service
-      DATABASE_URL: ${LOBBY_DATABASE_URL}
-      BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
-      REDIS_HOST: redis_cache-1
-      REDIS_PORT: 6379
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER}
-      RABBITMQ_PASS: ${RABBITMQ_PASS}
-      SD_HOST: service_discovery
-      SD_PORT: 50051
-      LOGSTASH_HOST: logstash
-      LOGSTASH_PORT: 5000
+      <<: *lobby_service_env
     ports:
       - 9002:8000
     networks:
@@ -183,19 +162,89 @@ services:
       - redis_cache-3
       - rabbitmq
 
-  postgres_trains:
-    image: postgres:16-alpine3.20
-    restart: no
-    environment:
-      - POSTGRES_USER=${TRAIN_POSTGRES_USER}
-      - POSTGRES_PASSWORD=${TRAIN_POSTGRES_PASSWORD}
-      - POSTGRES_DB=${TRAIN_POSTGRES_DB}
+  x-postgres_trains: &postgres_trains
+    build:
+      context: ./config/postgres
+      dockerfile: Dockerfile 
+
+  postgres_trains_monitor:
+    <<: *postgres_trains
+    command: >
+      bash -c "pg_autoctl create monitor
+      --pgdata /var/lib/postgres/pgaf
+      --pgport 5432
+      --hostname postgres_trains_monitor
+      --auth trust
+      --ssl-self-signed
+      --run"
     ports:
-      - '5432:5432'
-    networks:
-      - micro-network
-    volumes: 
-        - postgres_trains-data:/var/lib/postgresql/data
+      - "5432:5432"
+    volumes:
+      - postgres_trains_monitor-data:/var/lib/postgres
+
+  postgres_trains_node1:
+    <<: *postgres_trains
+    command: >
+      bash -c "pg_autoctl create postgres
+      --hostname postgres_trains_node1
+      --auth trust
+      --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --ssl-self-signed
+      --run"
+    depends_on:
+      - postgres_trains_monitor
+    ports:
+      - "5443:5432"
+    volumes:
+      - postgres_trains_node1-data:/var/lib/postgres
+
+  postgres_trains_node2:
+    <<: *postgres_trains
+    command: >
+      bash -c "pg_autoctl create postgres
+      --hostname postgres_trains_node2
+      --auth trust
+      --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --ssl-self-signed
+      --run"
+    depends_on:
+      - postgres_trains_monitor
+    ports:
+      - "5453:5432"
+    volumes:
+      - postgres_trains_node2-data:/var/lib/postgres
+
+  postgres_trains_node3:
+    <<: *postgres_trains
+    command: >
+      bash -c "pg_autoctl create postgres
+      --hostname postgres_trains_node3
+      --auth trust
+      --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --ssl-self-signed
+      --run"
+    depends_on:
+      - postgres_trains_monitor
+    ports:
+      - "5463:5432"
+    volumes:
+      - postgres_trains_node3-data:/var/lib/postgres
+
+  postgres_trains_node4:
+    <<: *postgres_trains
+    command: >
+      bash -c "pg_autoctl create postgres
+      --hostname postgres_trains_node4
+      --auth trust
+      --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --ssl-self-signed
+      --run"
+    depends_on:
+      - postgres_trains_monitor
+    ports:
+      - "5473:5432"
+    volumes:
+      - postgres_trains_node4-data:/var/lib/postgres
 
   postgres_lobbies:
     image: postgres:16-alpine3.20
@@ -210,36 +259,29 @@ services:
       - micro-network
     volumes: 
         - postgres_lobbies-data:/var/lib/postgresql/data
+
+  x-redis_cache: &redis_cache
+    image: redis:latest
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - micro-network
+    volumes:
+      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
   
   redis_cache-1:
-    image: redis:latest
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    <<: *redis_cache
     ports:
       - 6379:6379
-    networks:
-      - micro-network
-    volumes:
-      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
 
   redis_cache-2:
-    image: redis:latest
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    <<: *redis_cache
     ports:
       - 6380:6379
-    networks:
-      - micro-network
-    volumes:
-      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
 
   redis_cache-3:
-    image: redis:latest
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    <<: *redis_cache
     ports:
       - 6381:6379
-    networks:
-      - micro-network
-    volumes:
-      - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
 
   redis_cluster_init:
     image: redis:latest
@@ -321,7 +363,11 @@ services:
 
 volumes:
   redis_discovery-data:
-  postgres_trains-data:
+  postgres_trains_monitor-data:
+  postgres_trains_node1-data:
+  postgres_trains_node2-data:
+  postgres_trains_node3-data:
+  postgres_trains_node4-data:
   postgres_lobbies-data:
   service_discovery-data:
   elasticsearch-data:
