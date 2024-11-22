@@ -12,20 +12,21 @@ import json
 
 class BookingManager:
 
-    def __init__(self, db: Session, rabbitmq: RabbitMQ, redis_cache: redis.RedisCluster):
-        self.db = db
+    def __init__(self, master_db: Session, slave_db: Session, rabbitmq: RabbitMQ, redis_cache: redis.RedisCluster):
+        self.master_db = master_db
+        self.slave_db = slave_db
         self.rabbitmq = rabbitmq
         self.redis_cache = redis_cache
 
     def create(self, booking: BookingBaseDto):
-        db_train = self.db.query(Train).filter(
+        db_train = self.master_db.query(Train).filter(
             Train.id == booking.train_id).first()
 
         if db_train is None:
             raise HTTPException(
                 status_code=404, detail="Train to book ticket for not found")
 
-        existing_booking = self.db.query(Booking).filter(
+        existing_booking = self.slave_db.query(Booking).filter(
             Booking.train_id == booking.train_id,
             Booking.user_credentials == booking.user_credentials
         ).first()
@@ -40,17 +41,17 @@ class BookingManager:
                 booking.user_credentials}.\nThere are no more seats left.\n"
             self.rabbitmq.send_message_to_exchange(
                 routing_key=str(db_train.id), message=message)
-            self.db.delete(db_train)
+            self.master_db.delete(db_train)
         else:
-            self.db.commit()
-            self.db.refresh(db_train)
+            self.master_db.commit()
+            self.master_db.refresh(db_train)
 
         db_booking = Booking(train_id=booking.train_id,
                              user_credentials=booking.user_credentials)
 
-        self.db.add(db_booking)
-        self.db.commit()
-        self.db.refresh(db_booking)
+        self.master_db.add(db_booking)
+        self.master_db.commit()
+        self.master_db.refresh(db_booking)
 
         message = f"A booking was registered for {
             booking.user_credentials}.\nAvailable seats: {db_train.available_seats}\n"
@@ -66,7 +67,7 @@ class BookingManager:
         if bookings:
             return json.loads(bookings)
         else:
-            bookings = self.db.query(Booking).all()
+            bookings = self.slave_db.query(Booking).all()
             booking_dtos = [BookingInfoDto.model_validate(
                 booking) for booking in bookings]
             self.redis_cache.setex(name="bookings", time=120, value=json.dumps(
@@ -74,7 +75,7 @@ class BookingManager:
             return bookings
 
     def get_by_id(self, booking_id: int):
-        db_booking = self.db.query(Booking).filter(
+        db_booking = self.slave_db.query(Booking).filter(
             Booking.id == booking_id).first()
 
         if db_booking is None:
@@ -83,7 +84,7 @@ class BookingManager:
         return db_booking
 
     def update(self, booking_id: int, updated_booking: BookingUpdateDto):
-        db_booking = self.db.query(Booking).filter(
+        db_booking = self.slave_db.query(Booking).filter(
             Booking.id == booking_id).first()
 
         if db_booking is None:
@@ -92,22 +93,22 @@ class BookingManager:
 
         db_booking.user_credentials = updated_booking.user_credentials
 
-        self.db.commit()
-        self.db.refresh(db_booking)
+        self.master_db.commit()
+        self.master_db.refresh(db_booking)
 
         self.redis_cache.delete('bookings')
 
         return db_booking.id
 
     def delete(self, booking_id: int):
-        db_booking = self.db.query(Booking).filter(
+        db_booking = self.slave_db.query(Booking).filter(
             Booking.id == booking_id).first()
 
         if db_booking is None:
             raise HTTPException(
                 status_code=404, detail="Booking to delete not found")
 
-        db_train = self.db.query(Train).filter(
+        db_train = self.slave_db.query(Train).filter(
             Train.id == db_booking.train_id).first()
         db_train.available_seats += 1
 
@@ -116,8 +117,8 @@ class BookingManager:
         self.rabbitmq.send_message_to_exchange(
             routing_key=str(db_train.id), message=message)
 
-        self.db.delete(db_booking)
-        self.db.commit()
+        self.master_db.delete(db_booking)
+        self.master_db.commit()
 
         self.redis_cache.delete('bookings')
 
@@ -125,8 +126,9 @@ class BookingManager:
 
 
 def get_booking_manager(
-    db: Session = Depends(get_db),
+    master_db: Session = Depends(lambda: next(get_db())[0]),
+    slave_db: Session = Depends(lambda: next(get_db())[1]),
     rabbitmq: RabbitMQ = Depends(get_rabbitmq),
     redis_cache: redis.RedisCluster = Depends(get_redis_client)
 ) -> BookingManager:
-    return BookingManager(db, rabbitmq, redis_cache)
+    return BookingManager(master_db, slave_db, rabbitmq, redis_cache)

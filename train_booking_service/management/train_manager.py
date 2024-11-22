@@ -12,8 +12,9 @@ import json
 
 class TrainManager:
 
-    def __init__(self, db: Session, rabbitmq: RabbitMQ, redis_cache: redis.RedisCluster):
-        self.db = db
+    def __init__(self, master_db: Session, slave_db: Session, rabbitmq: RabbitMQ, redis_cache: redis.RedisCluster):
+        self.master_db = master_db
+        self.slave_db = slave_db
         self.rabbitmq = rabbitmq
         self.redis_cache = redis_cache
 
@@ -21,9 +22,9 @@ class TrainManager:
         db_train = Train(route=train.route, departure_time=train.departure_time,
                          arrival_time=train.arrival_time, available_seats=train.available_seats)
 
-        self.db.add(db_train)
-        self.db.commit()
-        self.db.refresh(db_train)
+        self.master_db.add(db_train)
+        self.master_db.commit()
+        self.master_db.refresh(db_train)
 
         self.redis_cache.delete('trains')
 
@@ -35,7 +36,7 @@ class TrainManager:
         if trains:
             return json.loads(trains)
         else:
-            trains = self.db.query(Train).all()
+            trains = self.slave_db.query(Train).all()
             train_dtos = [TrainInfoDto.model_validate(
                 train) for train in trains]
             self.redis_cache.setex(name="trains", time=120, value=json.dumps(
@@ -43,7 +44,8 @@ class TrainManager:
             return trains
 
     def get_by_id(self, train_id: int):
-        db_train = self.db.query(Train).filter(Train.id == train_id).first()
+        db_train = self.slave_db.query(Train).filter(
+            Train.id == train_id).first()
 
         if db_train is None:
             raise HTTPException(status_code=404, detail="Train not found")
@@ -51,7 +53,8 @@ class TrainManager:
         return db_train
 
     def update(self, train_id: int, updated_train: TrainUpdateDto):
-        db_train = self.db.query(Train).filter(Train.id == train_id).first()
+        db_train = self.slave_db.query(Train).filter(
+            Train.id == train_id).first()
 
         if db_train is None:
             raise HTTPException(
@@ -75,8 +78,8 @@ class TrainManager:
                 updated_train.available_seats}\n"
             db_train.available_seats = updated_train.available_seats
 
-        self.db.commit()
-        self.db.refresh(db_train)
+        self.master_db.commit()
+        self.master_db.refresh(db_train)
 
         self.redis_cache.delete('trains')
         self.rabbitmq.send_message_to_exchange(
@@ -85,14 +88,15 @@ class TrainManager:
         return db_train.id
 
     def delete(self, train_id: int):
-        db_train = self.db.query(Train).filter(Train.id == train_id).first()
+        db_train = self.slave_db.query(Train).filter(
+            Train.id == train_id).first()
 
         if db_train is None:
             raise HTTPException(
                 status_code=404, detail="Train to delete not found")
 
-        self.db.delete(db_train)
-        self.db.commit()
+        self.master_db.delete(db_train)
+        self.master_db.commit()
 
         message = "Train you were tracking was removed from the schedule. It was registered by mistake.\n"
         self.rabbitmq.send_message_to_exchange(
@@ -103,8 +107,9 @@ class TrainManager:
 
 
 def get_train_manager(
-    db: Session = Depends(get_db),
+    master_db: Session = Depends(lambda: next(get_db())[0]),
+    slave_db: Session = Depends(lambda: next(get_db())[1]),
     rabbitmq: RabbitMQ = Depends(get_rabbitmq),
     redis_cache: redis.RedisCluster = Depends(get_redis_client)
 ) -> TrainManager:
-    return TrainManager(db, rabbitmq, redis_cache)
+    return TrainManager(master_db, slave_db, rabbitmq, redis_cache)

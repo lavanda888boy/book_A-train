@@ -1,6 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+class DbUpdateDto(BaseModel):
+    master_db: str = Field(..., max_length=200)
+    slave_dbs: List[str] = Field(..., max_items=10)
 
 
 class TrainBaseDto(BaseModel):
@@ -25,7 +30,7 @@ class TrainInfoDto(TrainBaseDto):
 
 
 class BookingBaseDto(BaseModel):
-    train_id: int 
+    train_id: int
     user_credentials: str = Field(..., max_length=100)
 
     class Config:

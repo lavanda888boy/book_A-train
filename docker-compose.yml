@@ -19,7 +19,7 @@ services:
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 6000
     ports:
-      - '7070:8080'
+      - "7070:8080"
     networks:
       - micro-network
     depends_on:
@@ -39,8 +39,8 @@ services:
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 6000
     ports:
-      - '6060:8080'
-      - '50051:50051'
+      - "6060:8080"
+      - "50051:50051"
     networks:
       - micro-network
     depends_on:
@@ -61,7 +61,7 @@ services:
   train_booking_service:
     build:
       context: ./train_booking_service
-      dockerfile: Dockerfile  
+      dockerfile: Dockerfile
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
@@ -77,7 +77,7 @@ services:
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 5000
     ports:
-      - '8000'
+      - "8000"
     networks:
       - micro-network
     deploy:
@@ -93,11 +93,10 @@ services:
   lobby_service_1:
     build:
       context: ./lobby_service
-      dockerfile: Dockerfile  
+      dockerfile: Dockerfile
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
-    environment:
-      &lobby_service_env
+    environment: &lobby_service_env
       SERVICE_NAME: lobby_service
       DATABASE_URL: ${LOBBY_DATABASE_URL}
       BOOKINGS_SERVICE_URL: http://gateway:7070/ts/bookings
@@ -125,7 +124,7 @@ services:
   lobby_service_2:
     build:
       context: ./lobby_service
-      dockerfile: Dockerfile  
+      dockerfile: Dockerfile
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
@@ -145,7 +144,7 @@ services:
   lobby_service_3:
     build:
       context: ./lobby_service
-      dockerfile: Dockerfile  
+      dockerfile: Dockerfile
     entrypoint: ["./entrypoint.sh"]
     restart: on-failure
     environment:
@@ -163,24 +162,38 @@ services:
       - rabbitmq
 
   x-postgres_trains: &postgres_trains
-    build:
-      context: ./config/postgres
-      dockerfile: Dockerfile 
+    image: citusdata/pg_auto_failover:v2.0-pg14
+    networks:
+      - micro-network
+    depends_on:
+      - postgres_trains_monitor
 
   postgres_trains_monitor:
-    <<: *postgres_trains
+    build:
+      context: ./config/postgres
+      dockerfile: Dockerfile
     command: >
-      bash -c "pg_autoctl create monitor
+      bash -c "python3 -u /usr/local/bin/monitor_master_node.py &
+      pg_autoctl create monitor
       --pgdata /var/lib/postgres/pgaf
       --pgport 5432
       --hostname postgres_trains_monitor
       --auth trust
       --ssl-self-signed
       --run"
+    environment:
+      DB_USER: ${TRAIN_POSTGRES_USER}
+      DB_NAME: ${TRAIN_POSTGRES_DB}
+      REDIS_HOST: redis_discovery
+      REDIS_PORT: 6379
     ports:
       - "5432:5432"
+    networks:
+      - micro-network
     volumes:
       - postgres_trains_monitor-data:/var/lib/postgres
+    depends_on:
+      - service_discovery
 
   postgres_trains_node1:
     <<: *postgres_trains
@@ -189,10 +202,12 @@ services:
       --hostname postgres_trains_node1
       --auth trust
       --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --listen '*'
+      --pg-hba-lan
+      --username train_user
+      --dbname TrainBookingServiceDb
       --ssl-self-signed
       --run"
-    depends_on:
-      - postgres_trains_monitor
     ports:
       - "5443:5432"
     volumes:
@@ -205,10 +220,12 @@ services:
       --hostname postgres_trains_node2
       --auth trust
       --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --listen '*'
+      --pg-hba-lan
+      --username train_user
+      --dbname TrainBookingServiceDb
       --ssl-self-signed
       --run"
-    depends_on:
-      - postgres_trains_monitor
     ports:
       - "5453:5432"
     volumes:
@@ -221,10 +238,12 @@ services:
       --hostname postgres_trains_node3
       --auth trust
       --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --listen '*'
+      --pg-hba-lan
+      --username train_user
+      --dbname TrainBookingServiceDb
       --ssl-self-signed
       --run"
-    depends_on:
-      - postgres_trains_monitor
     ports:
       - "5463:5432"
     volumes:
@@ -237,10 +256,12 @@ services:
       --hostname postgres_trains_node4
       --auth trust
       --monitor postgresql://autoctl_node@postgres_trains_monitor/pg_auto_failover
+      --listen '*'
+      --pg-hba-lan
+      --username train_user
+      --dbname TrainBookingServiceDb
       --ssl-self-signed
       --run"
-    depends_on:
-      - postgres_trains_monitor
     ports:
       - "5473:5432"
     volumes:
@@ -254,11 +275,11 @@ services:
       - POSTGRES_PASSWORD=${LOBBY_POSTGRES_PASSWORD}
       - POSTGRES_DB=${LOBBY_POSTGRES_DB}
     ports:
-      - '5433:5432'
+      - "5433:5432"
     networks:
       - micro-network
-    volumes: 
-        - postgres_lobbies-data:/var/lib/postgresql/data
+    volumes:
+      - postgres_lobbies-data:/var/lib/postgresql/data
 
   x-redis_cache: &redis_cache
     image: redis:latest
@@ -267,7 +288,7 @@ services:
       - micro-network
     volumes:
       - ./config/redis_cluster/redis.conf:/usr/local/etc/redis/redis.conf
-  
+
   redis_cache-1:
     <<: *redis_cache
     ports:
@@ -286,7 +307,12 @@ services:
   redis_cluster_init:
     image: redis:latest
     restart: no
-    command: ["/bin/sh", "-c", "redis-cli --cluster create book_a-train-redis_cache-1-1:6379 book_a-train-redis_cache-2-1:6379 book_a-train-redis_cache-3-1:6379 --cluster-yes"]
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "redis-cli --cluster create book_a-train-redis_cache-1-1:6379 book_a-train-redis_cache-2-1:6379 book_a-train-redis_cache-3-1:6379 --cluster-yes",
+      ]
     networks:
       - micro-network
     depends_on:
@@ -301,65 +327,65 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     ports:
-      - '5672:5672'
-      - '15672:15672'
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - micro-network
 
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.15.3
-    command: ["filebeat", "-e", "-strict.perms=false"]
-    networks:
-      - micro-network
-    volumes:
-      - service_discovery-data:/usr/share/filebeat/data
-      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
-    depends_on:
-      - logstash
+  # filebeat:
+  #   image: docker.elastic.co/beats/filebeat:8.15.3
+  #   command: ["filebeat", "-e", "-strict.perms=false"]
+  #   networks:
+  #     - micro-network
+  #   volumes:
+  #     - service_discovery-data:/usr/share/filebeat/data
+  #     - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+  #   depends_on:
+  #     - logstash
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    ports:
-      - "9200:9200"
-      - "9300:9300"
-    networks:
-      - micro-network
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+  #   container_name: elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - xpack.security.enabled=false
+  #     - bootstrap.memory_lock=true
+  #     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   ports:
+  #     - "9200:9200"
+  #     - "9300:9300"
+  #   networks:
+  #     - micro-network
+  #   volumes:
+  #     - elasticsearch-data:/usr/share/elasticsearch/data
 
-  logstash:
-    image: docker.elastic.co/logstash/logstash:7.14.0
-    container_name: logstash
-    ports:
-      - "5000:5000"
-      - "9600:9600"
-    networks:
-      - micro-network
-    volumes:
-      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
-    depends_on:
-      - elasticsearch
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:7.14.0
+  #   container_name: logstash
+  #   ports:
+  #     - "5000:5000"
+  #     - "9600:9600"
+  #   networks:
+  #     - micro-network
+  #   volumes:
+  #     - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+  #   depends_on:
+  #     - elasticsearch
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:7.14.0
-    environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    ports:
-      - "5601:5601"
-    networks:
-      - micro-network
-    depends_on:
-      - elasticsearch
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:7.14.0
+  #   environment:
+  #     - ELASTICSEARCH_URL=http://elasticsearch:9200
+  #   ports:
+  #     - "5601:5601"
+  #   networks:
+  #     - micro-network
+  #   depends_on:
+  #     - elasticsearch
 
 volumes:
   redis_discovery-data:

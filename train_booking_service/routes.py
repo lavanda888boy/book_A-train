@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from db.schemas import TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto, BookingUpdateDto
+from db.schemas import DbUpdateDto, TrainBaseDto, TrainInfoDto, TrainUpdateDto, BookingBaseDto, BookingInfoDto, BookingUpdateDto
+from management.db_manager import DbManager, get_db_manager
 from management.train_manager import TrainManager, get_train_manager
 from management.booking_manager import BookingManager, get_booking_manager
 from typing import List
@@ -11,6 +12,11 @@ router = APIRouter()
 @router.get("/status")
 def status():
     return JSONResponse(content={"status": "OK", "message": "Train booking service is running"})
+
+
+@router.put("/db")
+def update_master_slave_db_information(db_info: DbUpdateDto, db_manager: DbManager = Depends(get_db_manager)):
+    return db_manager.update_master_slave_db_information(db_info)
 
 
 @router.post("/trains")
