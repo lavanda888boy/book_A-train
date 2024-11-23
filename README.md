@@ -1,7 +1,9 @@
 # Train Booking System (microservice-based)
+
 Distributed system for booking train tickets and tracking their schedule.
 
 ## Setup and Execution
+
 Before running `docker compose` command you will need to create a `.env` file in the project root directory. The file should look like this (replace the placeholders with your actual connection credentials):
 
 ```
@@ -48,267 +50,338 @@ python -m unittest discover
 ```
 
 ## Application Suitability
-* **Microservice architecture** is a design approach where a software application is divided into small, independent services that communicate with each other over a network. Each service focuses on a specific functionality and can be developed, deployed, and scaled independently. 
-* Regarding the suitability of this architecture for the train booking system:
 
-    1. During peak travel times or high demand periods, you can scale the Booking Service independently by adding more instances. This ensures that the system can handle a high volume of ticket purchase requests without affecting other services.
+- **Microservice architecture** is a design approach where a software application is divided into small, independent services that communicate with each other over a network. Each service focuses on a specific functionality and can be developed, deployed, and scaled independently.
+- Regarding the suitability of this architecture for the train booking system:
 
-    2. Different teams can work on the Lobby Management service to enhance real-time chat features or improve user interfaces, while another team can focus on updating or optimizing the Train Information service. These updates can be deployed independently without impacting the overall platform.
+  1. During peak travel times or high demand periods, you can scale the Booking Service independently by adding more instances. This ensures that the system can handle a high volume of ticket purchase requests without affecting other services.
 
-* Real world example: Amtrak, the U.S. passenger rail service, uses microservices to handle real-time train bookings, seat reservations, and cancellations. Each feature, such as train availability and user booking history, can be handled by separate services. The lobby-like functionality in Amtrak includes train selection and seat reservation, much like in the proposed system, where users interact with the lobby to select trains before finalizing bookings.
+  2. Different teams can work on the Lobby Management service to enhance real-time chat features or improve user interfaces, while another team can focus on updating or optimizing the Train Information service. These updates can be deployed independently without impacting the overall platform.
+
+- Real world example: Amtrak, the U.S. passenger rail service, uses microservices to handle real-time train bookings, seat reservations, and cancellations. Each feature, such as train availability and user booking history, can be handled by separate services. The lobby-like functionality in Amtrak includes train selection and seat reservation, much like in the proposed system, where users interact with the lobby to select trains before finalizing bookings.
 
 ## Service Boundaries
+
 ![Architecture](./architecture.png)
-* Lobby service is responsible for user communication, managing train-related user lobbies and initiating booking requests.
-* Booking service handles booking requests (delegated by the lobby service), provides users with the real-time updates via the lobby service and manages train-related data, directly requested by users.
+
+- Lobby service is responsible for user communication, managing train-related user lobbies and initiating booking requests.
+- Train booking service handles booking requests (delegated by the lobby service), provides users with the real-time updates via the lobby service and manages train-related data, directly requested by users.
 
 ## Technology Stack and Communication Patterns
-* Lobby Service: **FastAPI + websockets** + **PostgreSQL**
-* Booking Service: **FastAPI** + **PostgreSQL** (replicated with failover)
-* Caching: **Redis Cluster** (sharded cache)
-* API Gateway + Service Discovery: **Express**
-* User-service communication: **RESTful API**
-* Inter-service communication: **HTTP** + **RabbitMQ**
+
+- Lobby Service: **FastAPI + websockets** + **PostgreSQL**
+- Train booking Service: **FastAPI** + **PostgreSQL** (replicated with failover)
+- Caching: **Redis Cluster** (sharded cache)
+- API Gateway + Service Discovery: **Express**
+- User-service communication: **RESTful API**
+- Inter-service communication: **HTTP** + **RabbitMQ**
 
 Regarding inter-service communication: those requests which will be directed from the lobby service to the booking service will be performed via **HTTP** (ticket booking request). On the other hand, real-time notification processing (booking confirmation) will be executed via an asynchronous message queue (**RabbitMQ**). **ServiceDiscovery**, on the other hand, is going to receive **gRPC** requests from the services in order to register them.
 
-In addition to that it is essential to clarify the use of **Data Warehouse** and **ELK Stack** components. The first one will be collecting data from the microservice databases periodically using ETL pipelines; the second one will be used for log aggregation: **LogStash** for collecting logs, **ElasticSearch** for accessing the logs and searching them efficiently and **Kibana** for visualisation purposes.
+In addition to that it is essential to clarify the use of the **ELK Stack** components. It is going to be used for log aggregation: **LogStash** for collecting logs, **ElasticSearch** for accessing the logs and searching them efficiently and **Kibana** for visualisation purposes.
 
 ## Data Management Design
-As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** and **Booking Service** will rely on the local Postgres databases. 
+
+As it was mentioned earlier each of the two services will have its own database (shared among their instances). **Lobby Service** and **Booking Service** will rely on the local Postgres databases.
 
 However, another important detail is that service endpoints can only be accessed via gateway routes by appending them at the end of each request.
-* **Gateway Endpoints**
 
-    * `GET /status` (simple status endpoint - healthcheck)
+- **Gateway Endpoints**
 
-        **Response**:
-        ```
+  - `GET /status` (simple status endpoint - healthcheck)
+
+    **Response**:
+
+    ```
+    {
+        "status": "OK",
+        "message": "Gateway is running"
+    }
+    ```
+
+  - `http://localhost:8080/ls` for accessing lobby service
+  - `http://localhost:8080/ts` for accessing train booking service
+
+  - `POST /register-train-saga` (start long running transaction saga for registering new train and creating the associated lobby)
+
+    **Request**:
+
+    ```
+    {
+        "route": "Chisinau-Iasi",
+        "departure_time": "2024-09-25T06:30",
+        "arrival_time": "2024-09-26T11:40",
+        "available_seats": 100
+    }
+    ```
+
+    **Response**:
+
+    ```
+    {
+        "registeredTrainId": 1,
+        "createdLobbyId": 1
+    }
+    ```
+
+- **Lobby Service Endpoints**:
+
+  - `GET /status` (simple status endpoint - healthcheck)
+
+    **Response**:
+
+    ```
+    {
+        "status": "OK",
+        "message": "Lobby service is running"
+    }
+    ```
+
+  - `POST /lobbies` (create lobby associated with an existing train)
+
+    **Request**:
+
+    ```
+    {
+        "train_id": 1
+    }
+    ```
+
+    **Response**:
+
+    ```
+    1
+    ```
+
+  - `GET /lobbies` (get the list of all available lobbies)
+
+    **Response**:
+
+    ```
+    [
         {
-            "status": "OK", 
-            "message": "Gateway is running"
-        }
-        ```
-
-    * `http://localhost:8080/ls` for accessing lobby service
-    * `http://localhost:8080/ts` for accessing train booking service
-
-* **Lobby Service Endpoints**:
-
-    * `GET /status` (simple status endpoint - healthcheck)
-
-        **Response**:
-        ```
-        {
-            "status": "OK", 
-            "message": "Lobby service is running"
-        }
-        ```
-
-    * `POST /lobbies` (create lobby associated with an existing train)
-
-        **Request**: 
-        ```
-        { 
-            "train_id": 1 
-        }
-        ```
-
-        **Response**: 
-        ```
-        1
-        ```
-    
-    * `GET /lobbies` (get the list of all available lobbies)
-
-        **Response**: 
-        ```
-        [
-            {  
-                "train_id": 1,
-                "id": 1
-            }
-        ]
-        ```
-    
-    * `GET /lobbies/{lobby_id}` (get information about an existing lobby)
-
-        **Response**: 
-        ```
-        {  
             "train_id": 1,
             "id": 1
         }
-        ```
+    ]
+    ```
 
-    * `DELETE /lobbies/{lobbyId}` (delete existing lobby by its id)
+  - `GET /lobbies/{lobby_id}` (get information about an existing lobby)
 
-        **Response**: 
-        ```
-        1
-        ```
+    **Response**:
 
-    * `POST /start-booking` (initiate booking process - triggers `POST /bookings` endpoint of the train booking service)
-    
-        **Request**: 
-        ```
+    ```
+    {
+        "train_id": 1,
+        "id": 1
+    }
+    ```
+
+  - `DELETE /lobbies/{lobbyId}` (delete existing lobby by its id)
+
+    **Response**:
+
+    ```
+    1
+    ```
+
+  - `POST /start-booking` (initiate booking process - triggers `POST /bookings` endpoint of the train booking service)
+
+    **Request**:
+
+    ```
+    {
+        "train_id": 1,
+        "user_credentials": "Tom Ford"
+    }
+    ```
+
+    **Response**:
+
+    ```
+    {
+        "message": "Booking registered successfully",
+        "booking_id": response.content
+    }
+    ```
+
+  - `ws://{lobby_service_address}/lobbies/ws/{lobby_id}` (connect to an existing lobby via websockets, `lobby_service_address` is actually `lobby_service_container_name:port`)
+
+- **Train Booking Service Endpoints**:
+
+  - `GET /status` (simple status endpoint - healthcheck)
+
+    **Response**:
+
+    ```
+    {
+        "status": "OK",
+        "message": "Train booking service is running"
+    }
+    ```
+
+  - `PUT /db` (update master and slave database connections)
+
+    **Request**:
+
+    ```
+    {
+        "master_db": "postgresql://train_user:@postgres_trains_node4:5432/TrainBookingServiceDb",
+        "slave_dbs": ["postgresql://train_user:@postgres_trains_node1:5432/TrainBookingServiceDb"]
+    }
+    ```
+
+    **Response**:
+
+    ```
+    {
+        "message": "Master and slave DB information updated successfully"
+    }
+    ```
+
+  - `POST /trains` (register new train)
+
+    **Request**:
+
+    ```
+    {
+        "route": "Chisinau-Bucuresti",
+        "departure_time": "2024-09-25T06:30",
+        "arrival_time": "2024-09-26T11:40",
+        "available_seats": 100
+    }
+    ```
+
+    **Response**:
+
+    ```
+    1
+    ```
+
+  - `GET /trains` (get the list of registered trains)
+
+    **Response**:
+
+    ```
+    [
         {
-            "train_id": 1,
-            "user_credentials": "Tom Ford"
-        }
-        ```
-        
-        **Response**: 
-        ```
-        {
-            "message": "Booking registered successfully", 
-            "booking_id": response.content
-        }
-        ```
-
-    * `ws://{lobby_service_address}/lobbies/ws/{lobby_id}` (connect to an existing lobby via websockets, `lobby_service_address` is actually `lobby_service_container_name:port`)
-
-* **Train Booking Service Endpoints**:
-
-    * `GET /status` (simple status endpoint - healthcheck)
-
-        **Response**:
-        ```
-        {
-            "status": "OK", 
-            "message": "Train booking service is running"
-        }
-        ```
-
-    * `POST /trains` (register new train)
-
-        **Request**: 
-        ```
-        { 
-            "route": "Chisinau-Bucuresti",
-            "departure_time": "2024-09-25T06:30",
-            "arrival_time": "2024-09-26T11:40",
-            "available_seats": 100 
-        }
-        ```
-
-        **Response**: 
-        ```
-        1
-        ```
-
-    * `GET /trains` (get the list of registered trains)
-
-        **Response**:
-        ```
-        [
-            {
-                "route": "Chisinau-Bucuresti",
-                "departure_time": "2024-09-25T06:30",
-                "arrival_time": "2024-09-26T11:40",
-                "available_seats": 100,
-                "id": 1
-            }
-        ]
-        ```
-
-    * `GET /trains/{trainId}` (get information about a train)
-
-        **Response**:
-        ```
-        {  
             "route": "Chisinau-Bucuresti",
             "departure_time": "2024-09-25T06:30",
             "arrival_time": "2024-09-26T11:40",
             "available_seats": 100,
             "id": 1
         }
-        ```
+    ]
+    ```
 
-    * `PUT /trains/{train_id}` (update train details by id - supports partial update)
+  - `GET /trains/{trainId}` (get information about a train)
 
-        **Request**: 
-        ```
-        { 
-            "route": "Chisinau-Bucuresti",
-            "available_seats": 100 
-        }
-        ```
+    **Response**:
 
-        **Response**: 
-        ```
-        1
-        ```
+    ```
+    {
+        "route": "Chisinau-Bucuresti",
+        "departure_time": "2024-09-25T06:30",
+        "arrival_time": "2024-09-26T11:40",
+        "available_seats": 100,
+        "id": 1
+    }
+    ```
 
-    * `DELETE /trains/{train_id}` (delete registered train)
+  - `PUT /trains/{train_id}` (update train details by id - supports partial update)
 
-        **Response**: 
-        ```
-        1
-        ```
-    
-    * `POST /bookings` (register new booking - triggered by the `POST /start-booking` endpoint of the lobby service)
+    **Request**:
 
-        **Request**: 
-        ```
-        {
-            "train_id": 1,
-            "user_credentials": "Tom Ford"
-        }
-        ```
+    ```
+    {
+        "route": "Chisinau-Bucuresti",
+        "available_seats": 100
+    }
+    ```
 
-        **Response**: 
-        ```
-        1
-        ```
+    **Response**:
 
-    * `GET /bookings` (get the list of registered bookings)
+    ```
+    1
+    ```
 
-        **Response**:
-        ```
-        [
-            {
-                "train_id": 1,
-                "user_credentials": "Tom Ford",
-                "id": 1
-            }
-        ]
-        ```
+  - `DELETE /trains/{train_id}` (delete registered train)
 
-    * `GET /bookings/{booking_id}` (get information about a booking)
+    **Response**:
 
-        **Response**:
-        ```
+    ```
+    1
+    ```
+
+  - `POST /bookings` (register new booking - triggered by the `POST /start-booking` endpoint of the lobby service)
+
+    **Request**:
+
+    ```
+    {
+        "train_id": 1,
+        "user_credentials": "Tom Ford"
+    }
+    ```
+
+    **Response**:
+
+    ```
+    1
+    ```
+
+  - `GET /bookings` (get the list of registered bookings)
+
+    **Response**:
+
+    ```
+    [
         {
             "train_id": 1,
             "user_credentials": "Tom Ford",
             "id": 1
         }
-        ```
+    ]
+    ```
 
-    * `PUT /bookings/{booking_id}` (update information about the user who made the booking)
+  - `GET /bookings/{booking_id}` (get information about a booking)
 
-        **Request**: 
-        ```
-        { 
-            "user_credentials": "Jo Malone",
-        }
-        ```
+    **Response**:
 
-        **Response**: 
-        ```
-        1
-        ```
+    ```
+    {
+        "train_id": 1,
+        "user_credentials": "Tom Ford",
+        "id": 1
+    }
+    ```
 
-    * `DELETE /bookings/{booking_id}` (delete registered booking)
+  - `PUT /bookings/{booking_id}` (update information about the user who made the booking)
 
-        **Response**: 
-        ```
-        1
-        ```
-    
+    **Request**:
+
+    ```
+    {
+        "user_credentials": "Jo Malone",
+    }
+    ```
+
+    **Response**:
+
+    ```
+    1
+    ```
+
+  - `DELETE /bookings/{booking_id}` (delete registered booking)
+
+    **Response**:
+
+    ```
+    1
+    ```
 
 ## Deployment and Scaling
-* Both of my services will be deployed as **Docker containers** in a common network (they will be managed using `docker compose` approach). The same principle will be applied for **Redis** cache and service discovery storage, and **Postgres** database, plus the gateway will be an additional **Express** container. There will be no need for lobby database containerization, as **Mongodb** is available as a cloud solution.
-* Moreover, in order for the message queue communication to be possible, **RabbitMQ** will also be running in a separate container.
-* In the conditions of deploying the whole solution using locally running containers **horizontal scaling** seems to be the most appropriate. It is much simplier to increase the number of service instances running than to increase the computational resources of the machine which runs the system.
+
+- Both of my services will be deployed as **Docker containers** in a common network (they will be managed using `docker compose` approach). The same principle will be applied for **Redis** cache and service discovery storage, and **Postgres** databases.
+- Moreover, in order for the message queue communication to be possible, **RabbitMQ** will also be running in a separate container.
+- In the conditions of deploying the whole solution using locally running containers **horizontal scaling** seems to be the most appropriate. It is much simplier to increase the number of service instances running than to increase the computational resources of the machine which runs the system.
